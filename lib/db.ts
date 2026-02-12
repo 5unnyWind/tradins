@@ -103,30 +103,16 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
 
   await ensureTable();
   const sql = await getSqlTag();
-  const rows = (await sql`
-    SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
-    FROM analysis_records
-    ORDER BY id DESC
-    LIMIT 200
-  `) as {
-    rows: Array<{
-      id: number;
-      symbol: string;
-      analysis_mode: string;
-      debate_rounds: number;
-      recommendation: string | null;
-      created_at: string;
-    }>;
-  };
-
-  const mapMeta = (row: {
+  type DbRecordRow = {
     id: number;
     symbol: string;
     analysis_mode: string;
     debate_rounds: number;
     recommendation: string | null;
     created_at: string;
-  }): AnalysisRecordMeta => ({
+  };
+
+  const mapMeta = (row: DbRecordRow): AnalysisRecordMeta => ({
     id: row.id,
     symbol: row.symbol,
     analysisMode: row.analysis_mode as AnalysisRecordMeta["analysisMode"],
@@ -135,46 +121,62 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
     createdAt: new Date(row.created_at).toISOString(),
   });
 
-  const listed = rows.rows.slice(0, safeLimit).map(mapMeta);
-
-  // Vercel Postgres / Neon occasionally returns partial rows for bulk scans.
-  // Fallback to id-desc point lookups when bulk result is suspiciously short.
-  const maxIdRow = (await sql`
-    SELECT COALESCE(MAX(id), 0)::int AS max_id
-    FROM analysis_records
-  `) as {
-    rows: Array<{ max_id: number }>;
-  };
-  const maxId = Number(maxIdRow.rows[0]?.max_id ?? 0);
-  const likelyPartial = maxId > listed.length && listed.length < safeLimit;
-
-  if (!likelyPartial) {
-    return listed;
-  }
-
-  const reconstructed: AnalysisRecordMeta[] = [];
-  const minCursor = Math.max(1, maxId - safeLimit * 50);
-  for (let cursor = maxId; cursor >= minCursor && reconstructed.length < safeLimit; cursor -= 1) {
-    const row = (await sql`
+  const fetchBatch = async (take: number, skip: number): Promise<DbRecordRow[]> => {
+    const rows = (await sql`
       SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
       FROM analysis_records
-      WHERE id = ${cursor}
-      LIMIT 1
-    `) as {
-      rows: Array<{
-        id: number;
-        symbol: string;
-        analysis_mode: string;
-        debate_rounds: number;
-        recommendation: string | null;
-        created_at: string;
-      }>;
-    };
-    const first = row.rows[0];
-    if (first) reconstructed.push(mapMeta(first));
+      ORDER BY id DESC
+      LIMIT ${take}
+      OFFSET ${skip}
+    `) as { rows: DbRecordRow[] };
+    return rows.rows;
+  };
+
+  // Single bulk query for the common path.
+  const firstBatch = await fetchBatch(Math.min(200, safeLimit), 0);
+  if (firstBatch.length >= safeLimit) {
+    return firstBatch.slice(0, safeLimit).map(mapMeta);
   }
 
-  return reconstructed.length ? reconstructed : listed;
+  // Some Vercel Postgres / Neon environments occasionally truncate multi-row scans.
+  // Page through with OFFSET and dedupe by id to reconstruct a stable result set.
+  const seen = new Set<number>();
+  const collected: AnalysisRecordMeta[] = [];
+  for (const row of firstBatch) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    collected.push(mapMeta(row));
+  }
+
+  const pageSize = Math.min(50, safeLimit);
+  let offset = firstBatch.length;
+  let stagnantRounds = 0;
+
+  for (let round = 0; round < 12 && collected.length < safeLimit; round += 1) {
+    const page = await fetchBatch(pageSize, offset);
+    if (!page.length) break;
+
+    let added = 0;
+    for (const row of page) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      collected.push(mapMeta(row));
+      added += 1;
+      if (collected.length >= safeLimit) break;
+    }
+
+    offset += page.length;
+    if (page.length < pageSize) break;
+
+    if (added === 0) {
+      stagnantRounds += 1;
+      if (stagnantRounds >= 2) break;
+    } else {
+      stagnantRounds = 0;
+    }
+  }
+
+  return collected.slice(0, safeLimit);
 }
 
 export async function getRecord(
