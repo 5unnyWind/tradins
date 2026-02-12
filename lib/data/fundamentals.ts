@@ -1,7 +1,12 @@
+import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { toFiniteNumber } from "@/lib/data/common";
 import type { FundamentalsSnapshot } from "@/lib/types";
 
 const REQUEST_HEADERS = { "User-Agent": "tradins-next/0.1" } as const;
+const EASTMONEY_HEADERS = {
+  "User-Agent": "tradins-next/0.1",
+  Referer: "https://emweb.securities.eastmoney.com/",
+} as const;
 
 const TIMESERIES_TYPES = [
   "annualTotalRevenue",
@@ -74,6 +79,21 @@ function asString(value: unknown): string | null {
 function firstArrayItem(value: unknown): unknown {
   if (!Array.isArray(value) || !value.length) return undefined;
   return value[0];
+}
+
+function pctToRatio(value: unknown): number | null {
+  const n = toFiniteNumber(value);
+  if (n === null) return null;
+  return Math.abs(n) > 1 ? n / 100 : n;
+}
+
+function annualizeFromReportType(value: number | null, reportType: string | null): number | null {
+  if (value === null) return null;
+  if (!reportType) return value;
+  if (reportType.includes("一季")) return value * 4;
+  if (reportType.includes("半年") || reportType.includes("中报")) return value * 2;
+  if (reportType.includes("三季")) return value * (4 / 3);
+  return value;
 }
 
 function yoy(current: number | null, previous: number | null): number | null {
@@ -175,10 +195,10 @@ function emptySnapshot(symbol: string, error?: string): FundamentalsSnapshot {
   };
 }
 
-async function fetchJson(url: string): Promise<JsonFetchResult> {
+async function fetchJson(url: string, headers: Record<string, string> = REQUEST_HEADERS): Promise<JsonFetchResult> {
   try {
     const response = await fetch(url, {
-      headers: REQUEST_HEADERS,
+      headers,
       cache: "no-store",
     });
     let data: unknown = null;
@@ -306,6 +326,148 @@ function fromQuoteSummary(symbol: string, payload: unknown): FundamentalsSnapsho
       balanceSheetHistory: balance,
     },
   };
+}
+
+function latestEastmoneyClose(payload: unknown): number | null {
+  const rows = asRecord(asRecord(payload).data).klines;
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const last = String(rows[rows.length - 1] ?? "");
+  const parts = last.split(",");
+  if (parts.length < 3) return null;
+  return toFiniteNumber(parts[2]);
+}
+
+function firstDataRow(payload: unknown): Record<string, unknown> {
+  const rows = asRecord(asRecord(payload).result).data;
+  if (!Array.isArray(rows) || !rows.length) return {};
+  return asRecord(rows[0]);
+}
+
+async function fetchAShareFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot | null> {
+  const ashare = resolveAShareSymbol(symbol);
+  if (!ashare) return null;
+
+  const filter = encodeURIComponent(`(SECUCODE="${ashare.secuCode}")`);
+  const zyzbEndpoint = `https://emweb.securities.eastmoney.com/PC_HSF10/NewFinanceAnalysis/ZYZBAjaxNew?type=0&code=${encodeURIComponent(
+    ashare.emCode,
+  )}`;
+  const balanceEndpoint =
+    `https://datacenter.eastmoney.com/securities/api/data/v1/get?` +
+    `reportName=RPT_F10_FINANCE_GBALANCE&columns=ALL&quoteColumns=&filter=${filter}` +
+    `&pageNumber=1&pageSize=1&sortTypes=-1&sortColumns=REPORT_DATE&source=HSF10&client=PC`;
+  const incomeEndpoint =
+    `https://datacenter.eastmoney.com/securities/api/data/v1/get?` +
+    `reportName=RPT_F10_FINANCE_GINCOMEQC&columns=ALL&quoteColumns=&filter=${filter}` +
+    `&pageNumber=1&pageSize=1&sortTypes=-1&sortColumns=REPORT_DATE&source=HSF10&client=PC`;
+  const orgEndpoint =
+    `https://datacenter.eastmoney.com/securities/api/data/v1/get?` +
+    `reportName=RPT_HSF9_BASIC_ORGINFO&columns=ALL&quoteColumns=&filter=${filter}` +
+    `&pageNumber=1&pageSize=1&source=HSF10&client=PC`;
+  const closeEndpoint =
+    `https://push2his.eastmoney.com/api/qt/stock/kline/get?` +
+    `secid=${encodeURIComponent(ashare.secid)}` +
+    `&klt=101&fqt=1&beg=19900101&end=20500101&lmt=2` +
+    `&ut=fa5fd1943c7b386f172d6893dbfba10b` +
+    `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
+
+  const [zyzbRes, balanceRes, incomeRes, orgRes, closeRes] = await Promise.all([
+    fetchJson(zyzbEndpoint, EASTMONEY_HEADERS),
+    fetchJson(balanceEndpoint, EASTMONEY_HEADERS),
+    fetchJson(incomeEndpoint, EASTMONEY_HEADERS),
+    fetchJson(orgEndpoint, EASTMONEY_HEADERS),
+    fetchJson(closeEndpoint, EASTMONEY_HEADERS),
+  ]);
+
+  const zyzbRows = asRecord(zyzbRes.data).data;
+  const zyzb = asRecord(firstArrayItem(zyzbRows));
+  const balance = firstDataRow(balanceRes.data);
+  const income = firstDataRow(incomeRes.data);
+  const org = firstDataRow(orgRes.data);
+  const latestClose = latestEastmoneyClose(closeRes.data);
+
+  const reportType = asString(zyzb.REPORT_TYPE) ?? asString(zyzb.REPORT_DATE_NAME);
+  const reportRevenue = rawNum(zyzb.TOTALOPERATEREVE);
+  const reportNetIncome = firstNonNull(rawNum(zyzb.PARENTNETPROFIT), rawNum(zyzb.KCFJCXSYJLR));
+  const annualRevenue = annualizeFromReportType(reportRevenue, reportType);
+  const annualNetIncome = annualizeFromReportType(reportNetIncome, reportType);
+  const incomeReportType = asString(income.REPORT_TYPE) ?? reportType;
+  const annualOperatingProfit = annualizeFromReportType(
+    firstNonNull(rawNum(income.OPERATE_PROFIT), rawNum(income.TOTAL_PROFIT)),
+    incomeReportType,
+  );
+
+  const totalShares = firstNonNull(rawNum(org.REG_CAPITALY), rawNum(balance.SHARE_CAPITAL));
+  const marketCap = latestClose !== null && totalShares !== null ? latestClose * totalShares : null;
+  const totalAssets = firstNonNull(rawNum(balance.TOTAL_ASSETS), rawNum(balance.TOTAL_LIAB_EQUITY));
+  const totalDebt = firstNonNull(rawNum(balance.TOTAL_LIABILITIES), rawNum(zyzb.LIABILITY));
+  const stockholdersEquity = firstNonNull(rawNum(balance.TOTAL_PARENT_EQUITY), rawNum(balance.TOTAL_EQUITY));
+  const cashAndEq = rawNum(balance.MONETARYFUNDS);
+  const enterpriseValue =
+    marketCap !== null ? marketCap + (totalDebt ?? 0) - (cashAndEq ?? 0) : null;
+  const currentAssets = rawNum(balance.TOTAL_CURRENT_ASSETS);
+  const currentLiabilities = rawNum(balance.TOTAL_CURRENT_LIAB);
+  const inventory = rawNum(balance.INVENTORY);
+  const derivedCurrentRatio = safeDiv(currentAssets, currentLiabilities);
+  const quickAssets =
+    currentAssets !== null && inventory !== null ? currentAssets - inventory : null;
+  const derivedQuickRatio = safeDiv(quickAssets, currentLiabilities);
+
+  const snapshot: FundamentalsSnapshot = {
+    symbol,
+    valuation: {
+      marketCap,
+      trailingPE: safeDiv(marketCap, annualNetIncome),
+      forwardPE: null,
+      priceToBook: safeDiv(marketCap, stockholdersEquity),
+      enterpriseToRevenue: safeDiv(enterpriseValue, annualRevenue),
+      enterpriseToEbitda: null,
+    },
+    growthProfitability: {
+      revenueGrowthYoy: pctToRatio(zyzb.TOTALOPERATEREVETZ),
+      netIncomeGrowthYoy: pctToRatio(zyzb.PARENTNETPROFITTZ),
+      grossMargin: pctToRatio(zyzb.XSMLL),
+      operatingMargin: safeDiv(annualOperatingProfit, annualRevenue),
+      profitMargin: firstNonNull(pctToRatio(zyzb.XSJLL), safeDiv(annualNetIncome, annualRevenue)),
+      roe: firstNonNull(pctToRatio(zyzb.ROEJQ), safeDiv(annualNetIncome, stockholdersEquity)),
+      roa: firstNonNull(pctToRatio(zyzb.ZZCJLL), safeDiv(annualNetIncome, totalAssets)),
+    },
+    financialHealth: {
+      totalDebt,
+      totalAssets,
+      debtToAssets: firstNonNull(safeDiv(totalDebt, totalAssets), pctToRatio(zyzb.ZCFZL)),
+      currentRatio: firstNonNull(rawNum(zyzb.LD), derivedCurrentRatio),
+      quickRatio: firstNonNull(rawNum(zyzb.SD), derivedQuickRatio),
+      freeCashflow: firstNonNull(rawNum(zyzb.FCFF_FORWARD), rawNum(zyzb.FCFF_BACK)),
+    },
+    statements: {
+      source: "eastmoney-ashare",
+      profile: {
+        securityCode: ashare.code,
+        secuCode: ashare.secuCode,
+        securityName: asString(zyzb.SECURITY_NAME_ABBR) ?? asString(org.SECURITY_NAME_ABBR),
+        industry: asString(org.INDUSTRYCSRC1),
+      },
+      endpointStatus: {
+        zyzb: zyzbRes.status,
+        balance: balanceRes.status,
+        income: incomeRes.status,
+        org: orgRes.status,
+        close: closeRes.status,
+      },
+      reportType,
+      latestClose,
+      zyzb,
+      balance,
+      income,
+      org,
+    },
+  };
+
+  if (!hasAnySignal(snapshot)) {
+    snapshot.error = `A-share fundamentals unavailable (zyzb=${zyzbRes.status}, balance=${balanceRes.status}, income=${incomeRes.status}, org=${orgRes.status}, close=${closeRes.status})`;
+  }
+
+  return snapshot;
 }
 
 function toFallbackSnapshot(
@@ -478,6 +640,9 @@ function toFallbackSnapshot(
 }
 
 export async function fetchFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot> {
+  const aShareSnapshot = await fetchAShareFundamentalSnapshot(symbol);
+  if (aShareSnapshot && hasAnySignal(aShareSnapshot)) return aShareSnapshot;
+
   const modules = [
     "price",
     "summaryDetail",

@@ -1,3 +1,4 @@
+import { eastmoneyKlineParams, resolveAShareSymbol } from "@/lib/data/a-share";
 import { toFiniteNumber } from "@/lib/data/common";
 import type { MarketSnapshot, TechnicalSnapshot } from "@/lib/types";
 
@@ -9,6 +10,12 @@ type OHLCVPoint = {
   close: number;
   volume: number;
 };
+
+const YAHOO_HEADERS = { "User-Agent": "tradins-next/0.1" } as const;
+const EASTMONEY_HEADERS = {
+  "User-Agent": "tradins-next/0.1",
+  Referer: "https://quote.eastmoney.com/",
+} as const;
 
 function ema(values: number[], span: number): number[] {
   if (!values.length) return [];
@@ -92,6 +99,149 @@ function lastOrNull(values: Array<number | null>): number | null {
   return null;
 }
 
+function emptyTechnicals(): TechnicalSnapshot {
+  return {
+    price: null,
+    changePct1d: null,
+    ma20: null,
+    ma50: null,
+    ma200: null,
+    macd: null,
+    macdSignal: null,
+    macdHist: null,
+    rsi14: null,
+    bbUpper: null,
+    bbMid: null,
+    bbLower: null,
+    volume: null,
+    volumeRatio20d: null,
+    support: null,
+    resistance: null,
+    trend: "unknown",
+  };
+}
+
+function emptyMarketSnapshot(
+  symbol: string,
+  period: string,
+  interval: string,
+  error: string,
+): MarketSnapshot {
+  return {
+    symbol,
+    period,
+    interval,
+    points: 0,
+    technicals: emptyTechnicals(),
+    recentBars: {},
+    error,
+  };
+}
+
+function parseEastmoneyKlineTimestamp(rawDate: string): number | null {
+  if (!rawDate) return null;
+  const normalized = rawDate.includes(" ") ? rawDate.replace(" ", "T") : `${rawDate}T00:00:00`;
+  const withZone = `${normalized}+08:00`;
+  const ms = Date.parse(withZone);
+  if (!Number.isFinite(ms)) return null;
+  return Math.floor(ms / 1000);
+}
+
+function parseEastmoneyKlineRow(rawRow: string): OHLCVPoint | null {
+  const fields = rawRow.split(",");
+  if (fields.length < 6) return null;
+  const ts = parseEastmoneyKlineTimestamp(fields[0]);
+  const open = toFiniteNumber(fields[1]);
+  const close = toFiniteNumber(fields[2]);
+  const high = toFiniteNumber(fields[3]);
+  const low = toFiniteNumber(fields[4]);
+  const volumeHands = toFiniteNumber(fields[5]);
+  if (
+    ts === null ||
+    open === null ||
+    close === null ||
+    high === null ||
+    low === null ||
+    volumeHands === null
+  ) {
+    return null;
+  }
+  return {
+    ts,
+    open,
+    high,
+    low,
+    close,
+    volume: volumeHands * 100,
+  };
+}
+
+async function fetchAShareMarketSnapshot(
+  symbol: string,
+  period: string,
+  interval: string,
+): Promise<MarketSnapshot | null> {
+  const ashare = resolveAShareSymbol(symbol);
+  if (!ashare) return null;
+
+  const { klt, beg, end, lmt } = eastmoneyKlineParams(period, interval);
+  const endpoint =
+    `https://push2his.eastmoney.com/api/qt/stock/kline/get?` +
+    `secid=${encodeURIComponent(ashare.secid)}` +
+    `&klt=${encodeURIComponent(klt)}` +
+    `&fqt=1&beg=${encodeURIComponent(beg)}&end=${encodeURIComponent(end)}` +
+    `&lmt=${lmt}` +
+    `&ut=fa5fd1943c7b386f172d6893dbfba10b` +
+    `&fields1=f1,f2,f3,f4,f5,f6` +
+    `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
+
+  const response = await fetch(endpoint, {
+    headers: EASTMONEY_HEADERS,
+    cache: "no-store",
+  });
+  if (!response.ok) return null;
+
+  let data: unknown;
+  try {
+    data = await response.json();
+  } catch {
+    return null;
+  }
+
+  const rows = (data as { data?: { klines?: unknown[] } })?.data?.klines;
+  if (!Array.isArray(rows) || !rows.length) return null;
+
+  const points: OHLCVPoint[] = [];
+  for (const row of rows) {
+    const point = parseEastmoneyKlineRow(String(row ?? ""));
+    if (point) points.push(point);
+  }
+  if (!points.length) return null;
+
+  const technicals = computeTechnicals(points);
+  const recentBars = Object.fromEntries(
+    points.slice(-30).map((p) => [
+      new Date(p.ts * 1000).toISOString().slice(0, 10),
+      {
+        Open: Number(p.open.toFixed(4)),
+        High: Number(p.high.toFixed(4)),
+        Low: Number(p.low.toFixed(4)),
+        Close: Number(p.close.toFixed(4)),
+        Volume: Math.round(p.volume),
+      },
+    ]),
+  );
+
+  return {
+    symbol,
+    period,
+    interval,
+    points: points.length,
+    technicals,
+    recentBars,
+  };
+}
+
 function computeTechnicals(points: OHLCVPoint[]): TechnicalSnapshot {
   const close = points.map((p) => p.close);
   const volume = points.map((p) => p.volume);
@@ -145,42 +295,19 @@ function computeTechnicals(points: OHLCVPoint[]): TechnicalSnapshot {
 }
 
 export async function fetchMarketSnapshot(symbol: string, period = "6mo", interval = "1d"): Promise<MarketSnapshot> {
+  const aShareSnapshot = await fetchAShareMarketSnapshot(symbol, period, interval);
+  if (aShareSnapshot) return aShareSnapshot;
+
   const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol,
   )}?range=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}&includePrePost=false&events=div%2Csplits`;
 
   const response = await fetch(endpoint, {
-    headers: { "User-Agent": "tradins-next/0.1" },
+    headers: YAHOO_HEADERS,
     cache: "no-store",
   });
   if (!response.ok) {
-    return {
-      symbol,
-      period,
-      interval,
-      points: 0,
-      technicals: {
-        price: null,
-        changePct1d: null,
-        ma20: null,
-        ma50: null,
-        ma200: null,
-        macd: null,
-        macdSignal: null,
-        macdHist: null,
-        rsi14: null,
-        bbUpper: null,
-        bbMid: null,
-        bbLower: null,
-        volume: null,
-        volumeRatio20d: null,
-        support: null,
-        resistance: null,
-        trend: "unknown",
-      },
-      recentBars: {},
-      error: `Market API error: ${response.status}`,
-    };
+    return emptyMarketSnapshot(symbol, period, interval, `Market API error: ${response.status}`);
   }
 
   const data = await response.json();
@@ -207,33 +334,7 @@ export async function fetchMarketSnapshot(symbol: string, period = "6mo", interv
   }
 
   if (!points.length) {
-    return {
-      symbol,
-      period,
-      interval,
-      points: 0,
-      technicals: {
-        price: null,
-        changePct1d: null,
-        ma20: null,
-        ma50: null,
-        ma200: null,
-        macd: null,
-        macdSignal: null,
-        macdHist: null,
-        rsi14: null,
-        bbUpper: null,
-        bbMid: null,
-        bbLower: null,
-        volume: null,
-        volumeRatio20d: null,
-        support: null,
-        resistance: null,
-        trend: "unknown",
-      },
-      recentBars: {},
-      error: "No OHLCV rows returned.",
-    };
+    return emptyMarketSnapshot(symbol, period, interval, "No OHLCV rows returned.");
   }
 
   const technicals = computeTechnicals(points);
