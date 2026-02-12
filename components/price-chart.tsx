@@ -31,8 +31,8 @@ export function PriceChart({ labels, values }: PriceChartProps) {
             {
               label: "Close",
               data: values,
-              borderColor: "#0f766e",
-              backgroundColor: "rgba(15,118,110,0.15)",
+              borderColor: "#2dd4bf",
+              backgroundColor: "rgba(45,212,191,0.2)",
               fill: true,
               pointRadius: 0,
               borderWidth: 2,
@@ -47,10 +47,11 @@ export function PriceChart({ labels, values }: PriceChartProps) {
           scales: {
             x: {
               grid: { color: "rgba(148,163,184,0.2)" },
-              ticks: { maxTicksLimit: 7 },
+              ticks: { maxTicksLimit: 7, color: "#9aaac0" },
             },
             y: {
               grid: { color: "rgba(148,163,184,0.2)" },
+              ticks: { color: "#9aaac0" },
             },
           },
         }}

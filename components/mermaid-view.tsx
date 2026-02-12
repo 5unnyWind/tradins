@@ -15,11 +15,12 @@ export function MermaidView({ code }: { code: string }) {
         securityLevel: "loose",
         theme: "base",
         themeVariables: {
-          primaryColor: "#fff4d6",
-          primaryTextColor: "#1f2937",
-          primaryBorderColor: "#f59e0b",
-          lineColor: "#0f766e",
+          primaryColor: "#172433",
+          primaryTextColor: "#e6edf4",
+          primaryBorderColor: "#38bdf8",
+          lineColor: "#2dd4bf",
           fontFamily: "IBM Plex Sans",
+          background: "#0f1823",
         },
       });
       const id = `mermaid-${Math.random().toString(36).slice(2)}`;

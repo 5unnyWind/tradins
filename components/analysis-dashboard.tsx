@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 
 import type { AnalysisRecordMeta, AnalysisResult } from "@/lib/types";
@@ -48,6 +48,69 @@ type RecordsResponse = {
   storage: "vercel_postgres" | "memory";
 };
 
+type AnalyzeProgressPayload = {
+  message?: string;
+  step?: number;
+  totalSteps?: number;
+};
+
+type AnalyzeErrorResponse = {
+  ok?: false;
+  error?: string;
+  storage?: "vercel_postgres" | "memory";
+};
+
+type ParsedSseFrame = {
+  event: string;
+  data: unknown;
+};
+
+function parseSseFrame(frame: string): ParsedSseFrame | null {
+  const lines = frame.split("\n");
+  let event = "message";
+  const dataLines: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+
+  if (!dataLines.length) return null;
+  const rawData = dataLines.join("\n");
+  try {
+    return { event, data: JSON.parse(rawData) };
+  } catch {
+    return { event, data: { message: rawData } };
+  }
+}
+
+function toProgressText(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const payload = data as AnalyzeProgressPayload;
+  if (!payload.message) return null;
+  const step = Number(payload.step);
+  const total = Number(payload.totalSteps);
+  if (Number.isFinite(step) && Number.isFinite(total) && step > 0 && total > 0) {
+    return `[${step}/${total}] ${payload.message}`;
+  }
+  return payload.message;
+}
+
+async function readErrorMessage(response: Response): Promise<string> {
+  const raw = await response.text();
+  if (!raw) return `HTTP ${response.status}`;
+  try {
+    const parsed = JSON.parse(raw) as { error?: string };
+    if (parsed.error) return parsed.error;
+  } catch {}
+  return raw;
+}
+
 export function AnalysisDashboard({ initialRecords, initialStorageMode }: DashboardProps) {
   const [symbol, setSymbol] = useState("AAPL");
   const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
@@ -56,8 +119,9 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
   const [interval, setInterval] = useState("1d");
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [status, setStatus] = useState("");
+  const [statusLog, setStatusLog] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
-  const [isPending, startTransition] = useTransition();
 
   const { data, mutate } = useSWR<RecordsResponse>("/api/records?limit=100", fetcher, {
     fallbackData: { records: initialRecords, storage: initialStorageMode },
@@ -75,8 +139,18 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
     };
   }, [result]);
 
+  function pushStatusLine(line: string) {
+    setStatus(line);
+    setStatusLog((prev) => {
+      if (prev[0] === line) return prev;
+      return [line, ...prev].slice(0, 8);
+    });
+  }
+
   async function runAnalysis() {
-    setStatus("多智能体分析执行中，请等待 30-180 秒...");
+    setIsAnalyzing(true);
+    setStatusLog([]);
+    pushStatusLine("正在建立流式连接...");
     const payload: Record<string, unknown> = {
       symbol: symbol.trim().toUpperCase(),
       analysisMode,
@@ -85,45 +159,124 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
     };
     if (debateRounds.trim()) payload.debateRounds = Number(debateRounds.trim());
 
-    const response = await fetch("/api/analyze", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const json = await response.json();
-    if (!response.ok || !json.ok) {
-      throw new Error(json.error ?? `HTTP ${response.status}`);
+    try {
+      const response = await fetch("/api/analyze/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      if (!response.body) {
+        throw new Error("当前环境不支持流式读取响应体");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let donePayload: Record<string, unknown> | null = null;
+
+      const consumeFrame = (frame: string): Record<string, unknown> | null => {
+        const parsed = parseSseFrame(frame);
+        if (!parsed || parsed.event === "ping" || parsed.event === "end") return null;
+
+        if (parsed.event === "status" || parsed.event === "progress") {
+          const line = toProgressText(parsed.data);
+          if (line) pushStatusLine(line);
+          return null;
+        }
+
+        if (parsed.event === "done") {
+          if (!parsed.data || typeof parsed.data !== "object") {
+            throw new Error("分析完成事件格式不正确");
+          }
+          return parsed.data as Record<string, unknown>;
+        }
+
+        if (parsed.event === "error") {
+          const errorPayload = parsed.data as AnalyzeErrorResponse;
+          throw new Error(errorPayload.error ?? "分析失败");
+        }
+        return null;
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const parsedDone = consumeFrame(frame);
+          if (parsedDone) donePayload = parsedDone;
+        }
+      }
+
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        for (const frame of buffer.split("\n\n")) {
+          if (!frame.trim()) continue;
+          const parsedDone = consumeFrame(frame);
+          if (parsedDone) donePayload = parsedDone;
+        }
+      }
+
+      if (!donePayload) {
+        throw new Error("分析中断：未收到最终结果");
+      }
+
+      const finalResult = donePayload.result as AnalysisResult | undefined;
+      if (!finalResult || typeof finalResult !== "object") {
+        throw new Error("分析中断：返回结果为空");
+      }
+
+      const finalStorage =
+        donePayload.storage === "memory" ? "memory" : "vercel_postgres";
+      const finalRecordId = Number(donePayload.recordId);
+      if (!Number.isInteger(finalRecordId) || finalRecordId <= 0) {
+        throw new Error("分析中断：返回记录 ID 非法");
+      }
+
+      setResult(finalResult);
+      setStorageMode(finalStorage);
+      pushStatusLine(`分析完成，记录 ID: ${finalRecordId}`);
+
+      const rawRecord = donePayload.record;
+      const newRecord =
+        rawRecord && typeof rawRecord === "object"
+          ? (rawRecord as AnalysisRecordMeta)
+          : undefined;
+      if (newRecord && Number.isInteger(newRecord.id) && newRecord.id > 0) {
+        void mutate(
+          (current) => {
+            const prevRecords = current?.records ?? [];
+            const merged = [newRecord, ...prevRecords.filter((item) => item.id !== newRecord.id)];
+            return {
+              records: merged.slice(0, 100),
+              storage: finalStorage,
+            };
+          },
+          { revalidate: true },
+        );
+        return;
+      }
+      void mutate();
+    } finally {
+      setIsAnalyzing(false);
     }
-    setResult(json.result);
-    setStorageMode(json.storage);
-    setStatus(`分析完成，记录 ID: ${json.recordId}`);
-    const newRecord = json.record as AnalysisRecordMeta | undefined;
-    if (newRecord && Number.isInteger(newRecord.id) && newRecord.id > 0) {
-      void mutate(
-        (current) => {
-          const prevRecords = current?.records ?? [];
-          const merged = [newRecord, ...prevRecords.filter((item) => item.id !== newRecord.id)];
-          return {
-            records: merged.slice(0, 100),
-            storage: json.storage as "vercel_postgres" | "memory",
-          };
-        },
-        { revalidate: true },
-      );
-      return;
-    }
-    void mutate();
   }
 
   async function loadRecord(id: number) {
-    setStatus(`正在加载记录 #${id} ...`);
+    pushStatusLine(`正在加载记录 #${id} ...`);
     const response = await fetch(`/api/records/${id}`, { cache: "no-store" });
     const json = await response.json();
     if (!response.ok || !json.ok) {
       throw new Error(json.error ?? `HTTP ${response.status}`);
     }
     setResult(json.record.result);
-    setStatus(`已加载记录 #${id}`);
+    pushStatusLine(`已加载记录 #${id}`);
   }
 
   return (
@@ -148,18 +301,30 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
           className="panel form-panel"
           onSubmit={(e) => {
             e.preventDefault();
-            startTransition(() => {
-              runAnalysis().catch((err) => setStatus(`分析失败: ${err instanceof Error ? err.message : String(err)}`));
+            runAnalysis().catch((err) => {
+              const message = `分析失败: ${err instanceof Error ? err.message : String(err)}`;
+              pushStatusLine(message);
             });
           }}
         >
           <label>
             股票代码
-            <input value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="AAPL / 0700.HK / 600519.SS" />
+            <input
+              name="symbol"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              inputMode="text"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="AAPL / 0700.HK / 600519.SS"
+            />
           </label>
           <label>
             分析模式
             <select
+              name="analysisMode"
               value={analysisMode}
               onChange={(e) => setAnalysisMode(e.target.value as "quick" | "standard" | "deep")}
             >
@@ -170,20 +335,50 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
           </label>
           <label>
             辩论轮次（留空走模式默认）
-            <input value={debateRounds} onChange={(e) => setDebateRounds(e.target.value)} placeholder="1-10" />
+            <input
+              name="debateRounds"
+              type="number"
+              min={1}
+              max={10}
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
+              value={debateRounds}
+              onChange={(e) => setDebateRounds(e.target.value)}
+              placeholder="1-10"
+            />
           </label>
           <label>
             K线周期
-            <input value={period} onChange={(e) => setPeriod(e.target.value)} />
+            <input
+              name="period"
+              autoComplete="off"
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+            />
           </label>
           <label>
             K线粒度
-            <input value={interval} onChange={(e) => setInterval(e.target.value)} />
+            <input
+              name="interval"
+              autoComplete="off"
+              value={interval}
+              onChange={(e) => setInterval(e.target.value)}
+            />
           </label>
-          <button type="submit" disabled={isPending}>
-            {isPending ? "分析中..." : "开始分析"}
+          <button type="submit" disabled={isAnalyzing}>
+            {isAnalyzing ? "分析中..." : "开始分析"}
           </button>
-          <p className="status">{status}</p>
+          <p className="status" aria-live="polite">
+            {status}
+          </p>
+          {statusLog.length ? (
+            <div className="status-log">
+              {statusLog.map((line, index) => (
+                <p key={`${index}-${line}`}>{line}</p>
+              ))}
+            </div>
+          ) : null}
         </form>
       </section>
 
@@ -200,11 +395,9 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
                 className="record-item"
                 key={record.id}
                 onClick={() => {
-                  startTransition(() => {
-                    loadRecord(record.id).catch((err) =>
-                      setStatus(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
-                    );
-                  });
+                  loadRecord(record.id).catch((err) =>
+                    pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
+                  );
                 }}
               >
                 <div>

@@ -23,6 +23,23 @@ import type {
   StageBundle,
 } from "@/lib/types";
 
+export interface AnalysisProgressEvent {
+  phase: string;
+  message: string;
+  step?: number;
+  totalSteps?: number;
+}
+
+type ProgressReporter = (event: AnalysisProgressEvent) => void | Promise<void>;
+
+async function emitProgress(
+  reporter: ProgressReporter | undefined,
+  event: AnalysisProgressEvent,
+): Promise<void> {
+  if (!reporter) return;
+  await reporter(event);
+}
+
 export function sanitizeForJson<T>(value: T): T {
   if (value === null || value === undefined) return value;
   if (typeof value === "number") {
@@ -111,9 +128,21 @@ export function extractRecommendation(markdown: string): string | null {
   return hit ? hit[1] : null;
 }
 
-export async function runTradinsAnalysis(input: AnalysisInput): Promise<AnalysisResult> {
+export async function runTradinsAnalysis(
+  input: AnalysisInput,
+  onProgress?: ProgressReporter,
+): Promise<AnalysisResult> {
+  const totalSteps = 6 + input.debateRounds * 2;
+  let step = 0;
+  const nextProgress = async (phase: string, message: string) => {
+    step += 1;
+    await emitProgress(onProgress, { phase, message, step, totalSteps });
+  };
+
+  await nextProgress("collect", "采集市场/基本面/新闻/舆情数据中");
   const stageBundle = await collectStageBundle(input);
 
+  await nextProgress("analysts", "四位分析师并行研判中");
   const [marketReport, fundamentalsReport, newsReport, socialReport] = await Promise.all([
     marketAnalyst(input.symbol, stageBundle.market as unknown as Record<string, unknown>),
     fundamentalsAnalyst(input.symbol, stageBundle.fundamentals as unknown as Record<string, unknown>),
@@ -130,13 +159,16 @@ export async function runTradinsAnalysis(input: AnalysisInput): Promise<Analysis
   const debates: DebateTurn[] = [];
   const history: Array<Record<string, string>> = [];
   for (let round = 1; round <= input.debateRounds; round += 1) {
+    await nextProgress("debate-bull", `第 ${round} 轮辩论：多头陈述`);
     const bull = await bullResearcher(input.symbol, round, analystReports, history);
+    await nextProgress("debate-bear", `第 ${round} 轮辩论：空头反驳`);
     const bear = await bearResearcher(input.symbol, round, analystReports, [...history, { round: String(round), bull }]);
     const turn: DebateTurn = { roundId: round, bullMarkdown: bull, bearMarkdown: bear };
     debates.push(turn);
     history.push({ round: String(round), bull, bear });
   }
 
+  await nextProgress("manager", "研究主管生成初步交易计划");
   const preliminaryPlan = await researchManager(input.symbol, analystReports, history);
   const context = {
     stageBundle,
@@ -146,12 +178,14 @@ export async function runTradinsAnalysis(input: AnalysisInput): Promise<Analysis
     debates,
   };
 
+  await nextProgress("risk-cabinet", "风控内阁会审中（激进/保守/中立）");
   const [risky, safe, neutral] = await Promise.all([
     riskyAnalyst(input.symbol, preliminaryPlan, context),
     safeAnalyst(input.symbol, preliminaryPlan, context),
     neutralAnalyst(input.symbol, preliminaryPlan, context),
   ]);
 
+  await nextProgress("risk-judge", "风控法官生成最终裁定");
   const judge = await riskJudge(input.symbol, preliminaryPlan, risky, safe, neutral, context);
   const graphMermaid = getFlowGraphMermaid();
   const baseResult: Omit<AnalysisResult, "finalReport"> = {
@@ -163,6 +197,7 @@ export async function runTradinsAnalysis(input: AnalysisInput): Promise<Analysis
     stageBundle,
     graphMermaid,
   };
+  await nextProgress("report", "整理最终分析报告");
   const finalReport = renderFinalMarkdown(input, baseResult);
   return sanitizeForJson({
     ...baseResult,
