@@ -43,6 +43,11 @@ interface DashboardProps {
   initialStorageMode: "vercel_postgres" | "memory";
 }
 
+type RecordsResponse = {
+  records: AnalysisRecordMeta[];
+  storage: "vercel_postgres" | "memory";
+};
+
 export function AnalysisDashboard({ initialRecords, initialStorageMode }: DashboardProps) {
   const [symbol, setSymbol] = useState("AAPL");
   const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
@@ -54,7 +59,7 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
   const [isPending, startTransition] = useTransition();
 
-  const { data, mutate } = useSWR("/api/records", fetcher, {
+  const { data, mutate } = useSWR<RecordsResponse>("/api/records?limit=100", fetcher, {
     fallbackData: { records: initialRecords, storage: initialStorageMode },
     revalidateOnFocus: false,
   });
@@ -92,7 +97,22 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
     setResult(json.result);
     setStorageMode(json.storage);
     setStatus(`分析完成，记录 ID: ${json.recordId}`);
-    mutate();
+    const newRecord = json.record as AnalysisRecordMeta | undefined;
+    if (newRecord && Number.isInteger(newRecord.id) && newRecord.id > 0) {
+      void mutate(
+        (current) => {
+          const prevRecords = current?.records ?? [];
+          const merged = [newRecord, ...prevRecords.filter((item) => item.id !== newRecord.id)];
+          return {
+            records: merged.slice(0, 100),
+            storage: json.storage as "vercel_postgres" | "memory",
+          };
+        },
+        { revalidate: true },
+      );
+      return;
+    }
+    void mutate();
   }
 
   async function loadRecord(id: number) {
