@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
-import useSWR from "swr";
+import { useMemo, useState, type UIEvent } from "react";
+import useSWRInfinite from "swr/infinite";
 
 import type { AnalysisRecordMeta, AnalysisResult } from "@/lib/types";
 
@@ -25,6 +25,8 @@ const fetcher = async (url: string) => {
   return res.json();
 };
 
+const RECORD_PAGE_SIZE = 10;
+
 function fmtNum(value: unknown, digits = 2): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
@@ -41,11 +43,14 @@ function fmtPct(value: unknown): string {
 interface DashboardProps {
   initialRecords: AnalysisRecordMeta[];
   initialStorageMode: "vercel_postgres" | "memory";
+  initialHasMore: boolean;
 }
 
-type RecordsResponse = {
+type RecordsPageResponse = {
   records: AnalysisRecordMeta[];
   storage: "vercel_postgres" | "memory";
+  hasMore: boolean;
+  nextCursor: number | null;
 };
 
 type AnalyzeProgressPayload = {
@@ -174,7 +179,11 @@ async function readErrorMessage(response: Response): Promise<string> {
   return raw;
 }
 
-export function AnalysisDashboard({ initialRecords, initialStorageMode }: DashboardProps) {
+export function AnalysisDashboard({
+  initialRecords,
+  initialStorageMode,
+  initialHasMore,
+}: DashboardProps) {
   const [symbol, setSymbol] = useState("AAPL");
   const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
   const [debateRounds, setDebateRounds] = useState("");
@@ -187,12 +196,37 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
 
-  const { data, mutate } = useSWR<RecordsResponse>("/api/records?limit=100", fetcher, {
-    fallbackData: { records: initialRecords, storage: initialStorageMode },
-    revalidateOnFocus: false,
-  });
+  const initialPage: RecordsPageResponse = {
+    records: initialRecords,
+    storage: initialStorageMode,
+    hasMore: initialHasMore,
+    nextCursor: initialHasMore && initialRecords.length ? initialRecords[initialRecords.length - 1]?.id ?? null : null,
+  };
 
-  const records: AnalysisRecordMeta[] = data?.records ?? [];
+  const {
+    data: recordPages,
+    size,
+    setSize,
+    mutate: mutateRecords,
+    isValidating: isValidatingRecords,
+  } = useSWRInfinite<RecordsPageResponse>(
+    (pageIndex, previousPageData) => {
+      if (pageIndex === 0) return `/api/records?limit=${RECORD_PAGE_SIZE}`;
+      if (!previousPageData?.hasMore || !previousPageData.nextCursor) return null;
+      return `/api/records?limit=${RECORD_PAGE_SIZE}&cursor=${previousPageData.nextCursor}`;
+    },
+    fetcher,
+    {
+      fallbackData: [initialPage],
+      revalidateFirstPage: false,
+      revalidateOnFocus: false,
+    },
+  );
+
+  const pages = recordPages ?? [initialPage];
+  const records = pages.flatMap((page) => page.records);
+  const recordsHasMore = pages[pages.length - 1]?.hasMore ?? false;
+  const isLoadingMoreRecords = isValidatingRecords && size > pages.length;
 
   const chartData = useMemo(() => {
     const bars = result?.stageBundle.market.recentBars ?? {};
@@ -211,11 +245,23 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
     });
   }
 
+  function loadMoreRecords() {
+    if (!recordsHasMore || isLoadingMoreRecords) return;
+    void setSize((current) => current + 1);
+  }
+
+  function onRecordListScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
+    if (nearBottom) loadMoreRecords();
+  }
+
   async function runAnalysis() {
     setIsAnalyzing(true);
     setStatusLog([]);
     setStreamArtifacts([]);
     pushStatusLine("正在建立流式连接...");
+
     const payload: Record<string, unknown> = {
       symbol: symbol.trim().toUpperCase(),
       analysisMode,
@@ -305,8 +351,7 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
         throw new Error("分析中断：返回结果为空");
       }
 
-      const finalStorage =
-        donePayload.storage === "memory" ? "memory" : "vercel_postgres";
+      const finalStorage = donePayload.storage === "memory" ? "memory" : "vercel_postgres";
       const finalRecordId = Number(donePayload.recordId);
       if (!Number.isInteger(finalRecordId) || finalRecordId <= 0) {
         throw new Error("分析中断：返回记录 ID 非法");
@@ -316,26 +361,8 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
       setStorageMode(finalStorage);
       pushStatusLine(`分析完成，记录 ID: ${finalRecordId}`);
 
-      const rawRecord = donePayload.record;
-      const newRecord =
-        rawRecord && typeof rawRecord === "object"
-          ? (rawRecord as AnalysisRecordMeta)
-          : undefined;
-      if (newRecord && Number.isInteger(newRecord.id) && newRecord.id > 0) {
-        void mutate(
-          (current) => {
-            const prevRecords = current?.records ?? [];
-            const merged = [newRecord, ...prevRecords.filter((item) => item.id !== newRecord.id)];
-            return {
-              records: merged.slice(0, 100),
-              storage: finalStorage,
-            };
-          },
-          { revalidate: true },
-        );
-        return;
-      }
-      void mutate();
+      await setSize(1);
+      await mutateRecords();
     } finally {
       setIsAnalyzing(false);
     }
@@ -357,111 +384,15 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
       <div className="bg-orb orb-a" />
       <div className="bg-orb orb-b" />
 
-      <section className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">tradins on next.js + vercel</p>
-          <h1>Tradins 金融分析 Agengs-Team</h1>
-          <p>
-            四位分析师并行研究，随后多空辩论、研究主管决策、风控内阁裁定。所有分析记录可持久化到
-            Vercel Postgres。
-          </p>
-          <p className="storage-tag">
-            当前存储: <strong>{storageMode}</strong>
-          </p>
-        </div>
-
-        <form
-          className="panel form-panel"
-          onSubmit={(e) => {
-            e.preventDefault();
-            runAnalysis().catch((err) => {
-              const message = `分析失败: ${err instanceof Error ? err.message : String(err)}`;
-              pushStatusLine(message);
-            });
-          }}
-        >
-          <label>
-            股票代码
-            <input
-              name="symbol"
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              inputMode="text"
-              value={symbol}
-              onChange={(e) => setSymbol(e.target.value)}
-              placeholder="AAPL / 0700.HK / 600519.SS"
-            />
-          </label>
-          <label>
-            分析模式
-            <select
-              name="analysisMode"
-              value={analysisMode}
-              onChange={(e) => setAnalysisMode(e.target.value as "quick" | "standard" | "deep")}
-            >
-              <option value="quick">quick</option>
-              <option value="standard">standard</option>
-              <option value="deep">deep</option>
-            </select>
-          </label>
-          <label>
-            辩论轮次（留空走模式默认）
-            <input
-              name="debateRounds"
-              type="number"
-              min={1}
-              max={10}
-              inputMode="numeric"
-              pattern="[0-9]*"
-              autoComplete="off"
-              value={debateRounds}
-              onChange={(e) => setDebateRounds(e.target.value)}
-              placeholder="1-10"
-            />
-          </label>
-          <label>
-            K线周期
-            <input
-              name="period"
-              autoComplete="off"
-              value={period}
-              onChange={(e) => setPeriod(e.target.value)}
-            />
-          </label>
-          <label>
-            K线粒度
-            <input
-              name="interval"
-              autoComplete="off"
-              value={interval}
-              onChange={(e) => setInterval(e.target.value)}
-            />
-          </label>
-          <button type="submit" disabled={isAnalyzing}>
-            {isAnalyzing ? "分析中..." : "开始分析"}
-          </button>
-          <p className="status" aria-live="polite">
-            {status}
-          </p>
-          {statusLog.length ? (
-            <div className="status-log">
-              {statusLog.map((line, index) => (
-                <p key={`${index}-${line}`}>{line}</p>
-              ))}
-            </div>
-          ) : null}
-        </form>
-      </section>
-
-      <section className="grid cols-2">
-        <article className="panel">
+      <div className="dashboard-layout">
+        <aside className="panel records-sidebar">
           <div className="panel-header">
             <h2>分析记录</h2>
-            <span>{records.length} 条</span>
+            <span>
+              {records.length} 条{recordsHasMore ? " · 下滑加载" : ""}
+            </span>
           </div>
-          <div className="record-list">
+          <div className="record-list records-scroll" onScroll={onRecordListScroll}>
             {records.map((record) => (
               <button
                 type="button"
@@ -486,137 +417,239 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
               </button>
             ))}
             {!records.length ? <div className="empty-state">暂无记录</div> : null}
+            {isLoadingMoreRecords ? <div className="empty-state">加载更多中...</div> : null}
+            {!recordsHasMore && records.length ? <div className="empty-state">已加载全部记录</div> : null}
           </div>
-        </article>
+        </aside>
 
-        <article className="panel">
-          <h2>数据流图</h2>
-          {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
-        </article>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>实时分析产物</h2>
-          <span>{streamArtifacts.length ? `${streamArtifacts.length} 条` : "等待产物"}</span>
-        </div>
-        <div className="artifact-stream-list">
-          {streamArtifacts.length ? (
-            streamArtifacts.map((item) => (
-              <article className="artifact-stream-item" key={item.id}>
-                <div className="artifact-stream-head">
-                  <strong>{item.title}</strong>
-                  <span>{item.meta || "实时输出"}</span>
-                </div>
-                <MarkdownView markdown={item.markdown} />
-              </article>
-            ))
-          ) : (
-            <div className="empty-state">
-              {isAnalyzing ? "分析进行中，产物会实时显示在这里" : "开始分析后，这里会显示每一轮产物"}
+        <div className="dashboard-main">
+          <section className="hero">
+            <div className="hero-copy">
+              <p className="eyebrow">tradins on next.js + vercel</p>
+              <h1>Tradins 金融分析 Agengs-Team</h1>
+              <p>
+                四位分析师并行研究，随后多空辩论、研究主管决策、风控内阁裁定。所有分析记录可持久化到
+                Vercel Postgres。
+              </p>
+              <p className="storage-tag">
+                当前存储: <strong>{storageMode}</strong>
+              </p>
             </div>
-          )}
-        </div>
-      </section>
 
-      {result ? (
-        <>
-          <section className="grid cols-2">
-            <article className="panel">
-              <h2>市场快照</h2>
-              <div className="metric-grid">
-                <div className="metric">
-                  <span>现价</span>
-                  <strong>{fmtNum(result.stageBundle.market.technicals.price)}</strong>
+            <form
+              className="panel form-panel"
+              onSubmit={(e) => {
+                e.preventDefault();
+                runAnalysis().catch((err) => {
+                  const message = `分析失败: ${err instanceof Error ? err.message : String(err)}`;
+                  pushStatusLine(message);
+                });
+              }}
+            >
+              <label>
+                股票代码
+                <input
+                  name="symbol"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  inputMode="text"
+                  value={symbol}
+                  onChange={(e) => setSymbol(e.target.value)}
+                  placeholder="AAPL / 0700.HK / 600519.SS"
+                />
+              </label>
+              <label>
+                分析模式
+                <select
+                  name="analysisMode"
+                  value={analysisMode}
+                  onChange={(e) => setAnalysisMode(e.target.value as "quick" | "standard" | "deep")}
+                >
+                  <option value="quick">quick</option>
+                  <option value="standard">standard</option>
+                  <option value="deep">deep</option>
+                </select>
+              </label>
+              <label>
+                辩论轮次（留空走模式默认）
+                <input
+                  name="debateRounds"
+                  type="number"
+                  min={1}
+                  max={10}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  value={debateRounds}
+                  onChange={(e) => setDebateRounds(e.target.value)}
+                  placeholder="1-10"
+                />
+              </label>
+              <label>
+                K线周期
+                <input
+                  name="period"
+                  autoComplete="off"
+                  value={period}
+                  onChange={(e) => setPeriod(e.target.value)}
+                />
+              </label>
+              <label>
+                K线粒度
+                <input
+                  name="interval"
+                  autoComplete="off"
+                  value={interval}
+                  onChange={(e) => setInterval(e.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={isAnalyzing}>
+                {isAnalyzing ? "分析中..." : "开始分析"}
+              </button>
+              <p className="status" aria-live="polite">
+                {status}
+              </p>
+              {statusLog.length ? (
+                <div className="status-log">
+                  {statusLog.map((line, index) => (
+                    <p key={`${index}-${line}`}>{line}</p>
+                  ))}
                 </div>
-                <div className="metric">
-                  <span>1日涨跌</span>
-                  <strong>{fmtPct(result.stageBundle.market.technicals.changePct1d)}</strong>
-                </div>
-                <div className="metric">
-                  <span>RSI14</span>
-                  <strong>{fmtNum(result.stageBundle.market.technicals.rsi14)}</strong>
-                </div>
-                <div className="metric">
-                  <span>量比20d</span>
-                  <strong>{fmtNum(result.stageBundle.market.technicals.volumeRatio20d)}</strong>
-                </div>
-              </div>
-              <PriceChart labels={chartData.labels} values={chartData.values} />
-            </article>
-
-            <article className="panel">
-              <h2>研究主管初步交易计划</h2>
-              <MarkdownView markdown={result.preliminaryPlan} />
-            </article>
+              ) : null}
+            </form>
           </section>
 
           <section className="panel">
-            <h2>四位分析师</h2>
-            <div className="card-grid">
-              <div className="card">
-                <h3>📈 市场分析师</h3>
-                <MarkdownView markdown={result.analystReports.market.markdown} />
-              </div>
-              <div className="card">
-                <h3>📊 基本面分析师</h3>
-                <MarkdownView markdown={result.analystReports.fundamentals.markdown} />
-              </div>
-              <div className="card">
-                <h3>📰 新闻分析师</h3>
-                <MarkdownView markdown={result.analystReports.news.markdown} />
-              </div>
-              <div className="card">
-                <h3>🗣️ 舆情分析师</h3>
-                <MarkdownView markdown={result.analystReports.social.markdown} />
-              </div>
-            </div>
+            <h2>数据流图</h2>
+            {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
           </section>
 
           <section className="panel">
-            <h2>多空辩论</h2>
-            <div className="timeline">
-              {result.debates.map((turn) => (
-                <article className="turn" key={turn.roundId}>
-                  <span className="badge">第 {turn.roundId} 轮</span>
-                  <div className="grid cols-2">
-                    <div className="card">
-                      <h3>🐂 多头</h3>
-                      <MarkdownView markdown={turn.bullMarkdown} />
+            <div className="panel-header">
+              <h2>实时分析产物</h2>
+              <span>{streamArtifacts.length ? `${streamArtifacts.length} 条` : "等待产物"}</span>
+            </div>
+            <div className="artifact-stream-list">
+              {streamArtifacts.length ? (
+                streamArtifacts.map((item) => (
+                  <article className="artifact-stream-item" key={item.id}>
+                    <div className="artifact-stream-head">
+                      <strong>{item.title}</strong>
+                      <span>{item.meta || "实时输出"}</span>
                     </div>
-                    <div className="card">
-                      <h3>🐻 空头</h3>
-                      <MarkdownView markdown={turn.bearMarkdown} />
+                    <MarkdownView markdown={item.markdown} />
+                  </article>
+                ))
+              ) : (
+                <div className="empty-state">
+                  {isAnalyzing ? "分析进行中，产物会实时显示在这里" : "开始分析后，这里会显示每一轮产物"}
+                </div>
+              )}
+            </div>
+          </section>
+
+          {result ? (
+            <>
+              <section className="grid cols-2">
+                <article className="panel">
+                  <h2>市场快照</h2>
+                  <div className="metric-grid">
+                    <div className="metric">
+                      <span>现价</span>
+                      <strong>{fmtNum(result.stageBundle.market.technicals.price)}</strong>
+                    </div>
+                    <div className="metric">
+                      <span>1日涨跌</span>
+                      <strong>{fmtPct(result.stageBundle.market.technicals.changePct1d)}</strong>
+                    </div>
+                    <div className="metric">
+                      <span>RSI14</span>
+                      <strong>{fmtNum(result.stageBundle.market.technicals.rsi14)}</strong>
+                    </div>
+                    <div className="metric">
+                      <span>量比20d</span>
+                      <strong>{fmtNum(result.stageBundle.market.technicals.volumeRatio20d)}</strong>
                     </div>
                   </div>
+                  <PriceChart labels={chartData.labels} values={chartData.values} />
                 </article>
-              ))}
-            </div>
-          </section>
 
-          <section className="panel">
-            <h2>风控内阁与最终裁定</h2>
-            <div className="card-grid triple">
-              <div className="card">
-                <h3>🚨 激进派</h3>
-                <MarkdownView markdown={result.riskReports.risky} />
-              </div>
-              <div className="card">
-                <h3>🛡️ 保守派</h3>
-                <MarkdownView markdown={result.riskReports.safe} />
-              </div>
-              <div className="card">
-                <h3>⚖️ 中立派</h3>
-                <MarkdownView markdown={result.riskReports.neutral} />
-              </div>
-            </div>
-            <div className="judge-box">
-              <h3>风控法官</h3>
-              <MarkdownView markdown={result.riskReports.judge} />
-            </div>
-          </section>
-        </>
-      ) : null}
+                <article className="panel">
+                  <h2>研究主管初步交易计划</h2>
+                  <MarkdownView markdown={result.preliminaryPlan} />
+                </article>
+              </section>
+
+              <section className="panel">
+                <h2>四位分析师</h2>
+                <div className="card-grid">
+                  <div className="card">
+                    <h3>📈 市场分析师</h3>
+                    <MarkdownView markdown={result.analystReports.market.markdown} />
+                  </div>
+                  <div className="card">
+                    <h3>📊 基本面分析师</h3>
+                    <MarkdownView markdown={result.analystReports.fundamentals.markdown} />
+                  </div>
+                  <div className="card">
+                    <h3>📰 新闻分析师</h3>
+                    <MarkdownView markdown={result.analystReports.news.markdown} />
+                  </div>
+                  <div className="card">
+                    <h3>🗣️ 舆情分析师</h3>
+                    <MarkdownView markdown={result.analystReports.social.markdown} />
+                  </div>
+                </div>
+              </section>
+
+              <section className="panel">
+                <h2>多空辩论</h2>
+                <div className="timeline">
+                  {result.debates.map((turn) => (
+                    <article className="turn" key={turn.roundId}>
+                      <span className="badge">第 {turn.roundId} 轮</span>
+                      <div className="grid cols-2">
+                        <div className="card">
+                          <h3>🐂 多头</h3>
+                          <MarkdownView markdown={turn.bullMarkdown} />
+                        </div>
+                        <div className="card">
+                          <h3>🐻 空头</h3>
+                          <MarkdownView markdown={turn.bearMarkdown} />
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="panel">
+                <h2>风控内阁与最终裁定</h2>
+                <div className="card-grid triple">
+                  <div className="card">
+                    <h3>🚨 激进派</h3>
+                    <MarkdownView markdown={result.riskReports.risky} />
+                  </div>
+                  <div className="card">
+                    <h3>🛡️ 保守派</h3>
+                    <MarkdownView markdown={result.riskReports.safe} />
+                  </div>
+                  <div className="card">
+                    <h3>⚖️ 中立派</h3>
+                    <MarkdownView markdown={result.riskReports.neutral} />
+                  </div>
+                </div>
+                <div className="judge-box">
+                  <h3>风控法官</h3>
+                  <MarkdownView markdown={result.riskReports.judge} />
+                </div>
+              </section>
+            </>
+          ) : null}
+        </div>
+      </div>
     </main>
   );
 }

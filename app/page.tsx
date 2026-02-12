@@ -7,9 +7,17 @@ export const revalidate = 0;
 
 export default async function HomePage() {
   noStore();
-  const [records, storage] = await Promise.all([
-    listRecords(100),
+  const [recordBatch, storage] = await Promise.all([
+    listRecords(11),
     Promise.resolve(currentStorageMode()),
   ]);
-  return <AnalysisDashboard initialRecords={records} initialStorageMode={storage} />;
+  const initialRecords = recordBatch.slice(0, 10);
+  const initialHasMore = recordBatch.length > 10;
+  return (
+    <AnalysisDashboard
+      initialRecords={initialRecords}
+      initialStorageMode={storage}
+      initialHasMore={initialHasMore}
+    />
+  );
 }

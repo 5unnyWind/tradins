@@ -61,6 +61,32 @@ h3 {
   position: relative;
 }
 
+.dashboard-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.dashboard-main {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.records-sidebar {
+  position: sticky;
+  top: calc(10px + env(safe-area-inset-top));
+  max-height: calc(100vh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.records-scroll {
+  overflow: auto;
+  padding-right: 2px;
+}
+
 .bg-orb {
   position: fixed;
   width: 300px;
@@ -447,6 +473,19 @@ select:focus-visible {
 }
 
 @media (max-width: 1080px) {
+  .dashboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .records-sidebar {
+    position: static;
+    max-height: none;
+  }
+
+  .records-scroll {
+    max-height: 360px;
+  }
+
   .hero,
   .cols-2,
   .card-grid,
@@ -506,6 +545,10 @@ select:focus-visible {
   .record-item {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .records-scroll {
+    max-height: 320px;
   }
 
   .artifact-stream-list {

@@ -14,12 +14,20 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const parsedLimit = Number(url.searchParams.get("limit") ?? "30");
     const limit = Number.isFinite(parsedLimit) ? parsedLimit : 30;
-    const records = await listRecords(limit);
+    const parsedCursor = Number(url.searchParams.get("cursor") ?? "0");
+    const cursor = Number.isInteger(parsedCursor) && parsedCursor > 0 ? parsedCursor : null;
+    const all = await listRecords(200);
+    const filtered = cursor ? all.filter((item) => item.id < cursor) : all;
+    const records = filtered.slice(0, limit);
+    const hasMore = filtered.length > records.length;
+    const nextCursor = hasMore && records.length ? records[records.length - 1]?.id ?? null : null;
     return NextResponse.json(
       {
         ok: true,
         storage: currentStorageMode(),
         records,
+        hasMore,
+        nextCursor,
       },
       { headers: noStoreHeaders },
     );
