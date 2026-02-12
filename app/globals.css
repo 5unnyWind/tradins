@@ -255,6 +255,39 @@ select:focus-visible {
   content-visibility: auto;
 }
 
+.artifact-stream-list {
+  display: grid;
+  gap: 10px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 2px;
+  content-visibility: auto;
+}
+
+.artifact-stream-item {
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.artifact-stream-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.artifact-stream-head strong {
+  font-size: 14px;
+}
+
+.artifact-stream-head span {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
 .record-item {
   text-align: left;
   border: 1px solid var(--line);
@@ -473,6 +506,16 @@ select:focus-visible {
   .record-item {
     grid-template-columns: 1fr;
     gap: 6px;
+  }
+
+  .artifact-stream-list {
+    max-height: 360px;
+  }
+
+  .artifact-stream-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
   }
 
   .record-item > div:last-child {

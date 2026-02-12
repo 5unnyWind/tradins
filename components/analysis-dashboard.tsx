@@ -54,6 +54,18 @@ type AnalyzeProgressPayload = {
   totalSteps?: number;
 };
 
+type ArtifactType = "analyst" | "debate" | "plan" | "risk";
+
+type AnalyzeArtifactPayload = {
+  type?: "artifact";
+  artifactType?: ArtifactType;
+  title?: string;
+  markdown?: string;
+  key?: "market" | "fundamentals" | "news" | "social";
+  roundId?: number;
+  side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
+};
+
 type AnalyzeErrorResponse = {
   ok?: false;
   error?: string;
@@ -63,6 +75,13 @@ type AnalyzeErrorResponse = {
 type ParsedSseFrame = {
   event: string;
   data: unknown;
+};
+
+type StreamArtifactItem = {
+  id: string;
+  title: string;
+  markdown: string;
+  meta: string;
 };
 
 function parseSseFrame(frame: string): ParsedSseFrame | null {
@@ -101,6 +120,50 @@ function toProgressText(data: unknown): string | null {
   return payload.message;
 }
 
+function toArtifactItem(data: unknown): StreamArtifactItem | null {
+  if (!data || typeof data !== "object") return null;
+  const payload = data as AnalyzeArtifactPayload;
+  if (!payload.markdown || typeof payload.markdown !== "string") return null;
+  const markdown = payload.markdown.trim();
+  if (!markdown) return null;
+
+  const title = typeof payload.title === "string" && payload.title.trim()
+    ? payload.title.trim()
+    : "实时产物";
+
+  const metaParts: string[] = [];
+  if (typeof payload.artifactType === "string") {
+    const labelMap: Record<ArtifactType, string> = {
+      analyst: "分析师",
+      debate: "辩论",
+      plan: "交易计划",
+      risk: "风控",
+    };
+    metaParts.push(labelMap[payload.artifactType] ?? payload.artifactType);
+  }
+  if (Number.isInteger(payload.roundId) && Number(payload.roundId) > 0) {
+    metaParts.push(`第 ${payload.roundId} 轮`);
+  }
+  if (typeof payload.side === "string") {
+    const sideMap: Record<NonNullable<AnalyzeArtifactPayload["side"]>, string> = {
+      bull: "多头",
+      bear: "空头",
+      risky: "激进派",
+      safe: "保守派",
+      neutral: "中立派",
+      judge: "法官",
+    };
+    metaParts.push(sideMap[payload.side] ?? payload.side);
+  }
+
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    title,
+    markdown,
+    meta: metaParts.join(" · "),
+  };
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   const raw = await response.text();
   if (!raw) return `HTTP ${response.status}`;
@@ -120,6 +183,7 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [status, setStatus] = useState("");
   const [statusLog, setStatusLog] = useState<string[]>([]);
+  const [streamArtifacts, setStreamArtifacts] = useState<StreamArtifactItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
 
@@ -150,6 +214,7 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
   async function runAnalysis() {
     setIsAnalyzing(true);
     setStatusLog([]);
+    setStreamArtifacts([]);
     pushStatusLine("正在建立流式连接...");
     const payload: Record<string, unknown> = {
       symbol: symbol.trim().toUpperCase(),
@@ -184,6 +249,14 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
         if (parsed.event === "status" || parsed.event === "progress") {
           const line = toProgressText(parsed.data);
           if (line) pushStatusLine(line);
+          return null;
+        }
+
+        if (parsed.event === "artifact") {
+          const artifact = toArtifactItem(parsed.data);
+          if (artifact) {
+            setStreamArtifacts((prev) => [artifact, ...prev].slice(0, 30));
+          }
           return null;
         }
 
@@ -287,7 +360,7 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
       <section className="hero">
         <div className="hero-copy">
           <p className="eyebrow">tradins on next.js + vercel</p>
-          <h1>多智能体股票分析工作台</h1>
+          <h1>Tradins 金融分析 Agengs-Team</h1>
           <p>
             四位分析师并行研究，随后多空辩论、研究主管决策、风控内阁裁定。所有分析记录可持久化到
             Vercel Postgres。
@@ -420,6 +493,30 @@ export function AnalysisDashboard({ initialRecords, initialStorageMode }: Dashbo
           <h2>数据流图</h2>
           {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h2>实时分析产物</h2>
+          <span>{streamArtifacts.length ? `${streamArtifacts.length} 条` : "等待产物"}</span>
+        </div>
+        <div className="artifact-stream-list">
+          {streamArtifacts.length ? (
+            streamArtifacts.map((item) => (
+              <article className="artifact-stream-item" key={item.id}>
+                <div className="artifact-stream-head">
+                  <strong>{item.title}</strong>
+                  <span>{item.meta || "实时输出"}</span>
+                </div>
+                <MarkdownView markdown={item.markdown} />
+              </article>
+            ))
+          ) : (
+            <div className="empty-state">
+              {isAnalyzing ? "分析进行中，产物会实时显示在这里" : "开始分析后，这里会显示每一轮产物"}
+            </div>
+          )}
+        </div>
       </section>
 
       {result ? (

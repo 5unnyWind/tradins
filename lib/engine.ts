@@ -17,6 +17,7 @@ import { fetchMarketSnapshot } from "@/lib/data/market";
 import { fetchNewsSnapshot } from "@/lib/data/news";
 import { fetchSocialSnapshot } from "@/lib/data/social";
 import type {
+  AgentReport,
   AnalysisInput,
   AnalysisResult,
   DebateTurn,
@@ -24,20 +25,47 @@ import type {
 } from "@/lib/types";
 
 export interface AnalysisProgressEvent {
+  type: "progress";
   phase: string;
   message: string;
   step?: number;
   totalSteps?: number;
 }
 
-type ProgressReporter = (event: AnalysisProgressEvent) => void | Promise<void>;
+export interface AnalysisArtifactEvent {
+  type: "artifact";
+  artifactType: "analyst" | "debate" | "plan" | "risk";
+  title: string;
+  markdown: string;
+  key?: "market" | "fundamentals" | "news" | "social";
+  roundId?: number;
+  side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
+}
 
-async function emitProgress(
-  reporter: ProgressReporter | undefined,
-  event: AnalysisProgressEvent,
+export type AnalysisStreamEvent = AnalysisProgressEvent | AnalysisArtifactEvent;
+
+type StreamReporter = (event: AnalysisStreamEvent) => void | Promise<void>;
+
+async function emitEvent(
+  reporter: StreamReporter | undefined,
+  event: AnalysisStreamEvent,
 ): Promise<void> {
   if (!reporter) return;
   await reporter(event);
+}
+
+async function emitProgress(
+  reporter: StreamReporter | undefined,
+  event: Omit<AnalysisProgressEvent, "type">,
+): Promise<void> {
+  await emitEvent(reporter, { type: "progress", ...event });
+}
+
+async function emitArtifact(
+  reporter: StreamReporter | undefined,
+  event: Omit<AnalysisArtifactEvent, "type">,
+): Promise<void> {
+  await emitEvent(reporter, { type: "artifact", ...event });
 }
 
 export function sanitizeForJson<T>(value: T): T {
@@ -130,24 +158,46 @@ export function extractRecommendation(markdown: string): string | null {
 
 export async function runTradinsAnalysis(
   input: AnalysisInput,
-  onProgress?: ProgressReporter,
+  onEvent?: StreamReporter,
 ): Promise<AnalysisResult> {
   const totalSteps = 6 + input.debateRounds * 2;
   let step = 0;
   const nextProgress = async (phase: string, message: string) => {
     step += 1;
-    await emitProgress(onProgress, { phase, message, step, totalSteps });
+    await emitProgress(onEvent, { phase, message, step, totalSteps });
   };
 
   await nextProgress("collect", "采集市场/基本面/新闻/舆情数据中");
   const stageBundle = await collectStageBundle(input);
 
   await nextProgress("analysts", "四位分析师并行研判中");
+  const runAnalyst = async (
+    key: "market" | "fundamentals" | "news" | "social",
+    title: string,
+    runner: () => Promise<AgentReport>,
+  ): Promise<AgentReport> => {
+    const report = await runner();
+    await emitArtifact(onEvent, {
+      artifactType: "analyst",
+      key,
+      title,
+      markdown: report.markdown,
+    });
+    return report;
+  };
   const [marketReport, fundamentalsReport, newsReport, socialReport] = await Promise.all([
-    marketAnalyst(input.symbol, stageBundle.market as unknown as Record<string, unknown>),
-    fundamentalsAnalyst(input.symbol, stageBundle.fundamentals as unknown as Record<string, unknown>),
-    newsAnalyst(input.symbol, stageBundle.news as unknown as Record<string, unknown>),
-    socialAnalyst(input.symbol, stageBundle.social as unknown as Record<string, unknown>),
+    runAnalyst("market", "市场分析师报告", () =>
+      marketAnalyst(input.symbol, stageBundle.market as unknown as Record<string, unknown>),
+    ),
+    runAnalyst("fundamentals", "基本面分析师报告", () =>
+      fundamentalsAnalyst(input.symbol, stageBundle.fundamentals as unknown as Record<string, unknown>),
+    ),
+    runAnalyst("news", "新闻分析师报告", () =>
+      newsAnalyst(input.symbol, stageBundle.news as unknown as Record<string, unknown>),
+    ),
+    runAnalyst("social", "舆情分析师报告", () =>
+      socialAnalyst(input.symbol, stageBundle.social as unknown as Record<string, unknown>),
+    ),
   ]);
   const analystReports = {
     market: marketReport,
@@ -161,8 +211,24 @@ export async function runTradinsAnalysis(
   for (let round = 1; round <= input.debateRounds; round += 1) {
     await nextProgress("debate-bull", `第 ${round} 轮辩论：多头陈述`);
     const bull = await bullResearcher(input.symbol, round, analystReports, history);
+    await emitArtifact(onEvent, {
+      artifactType: "debate",
+      roundId: round,
+      side: "bull",
+      title: `第 ${round} 轮 · 多头观点`,
+      markdown: bull,
+    });
+
     await nextProgress("debate-bear", `第 ${round} 轮辩论：空头反驳`);
     const bear = await bearResearcher(input.symbol, round, analystReports, [...history, { round: String(round), bull }]);
+    await emitArtifact(onEvent, {
+      artifactType: "debate",
+      roundId: round,
+      side: "bear",
+      title: `第 ${round} 轮 · 空头观点`,
+      markdown: bear,
+    });
+
     const turn: DebateTurn = { roundId: round, bullMarkdown: bull, bearMarkdown: bear };
     debates.push(turn);
     history.push({ round: String(round), bull, bear });
@@ -170,6 +236,12 @@ export async function runTradinsAnalysis(
 
   await nextProgress("manager", "研究主管生成初步交易计划");
   const preliminaryPlan = await researchManager(input.symbol, analystReports, history);
+  await emitArtifact(onEvent, {
+    artifactType: "plan",
+    title: "研究主管初步交易计划",
+    markdown: preliminaryPlan,
+  });
+
   const context = {
     stageBundle,
     analystReports: Object.fromEntries(
@@ -179,14 +251,41 @@ export async function runTradinsAnalysis(
   };
 
   await nextProgress("risk-cabinet", "风控内阁会审中（激进/保守/中立）");
+  const runRisk = async (
+    side: "risky" | "safe" | "neutral",
+    title: string,
+    runner: () => Promise<string>,
+  ): Promise<string> => {
+    const markdown = await runner();
+    await emitArtifact(onEvent, {
+      artifactType: "risk",
+      side,
+      title,
+      markdown,
+    });
+    return markdown;
+  };
   const [risky, safe, neutral] = await Promise.all([
-    riskyAnalyst(input.symbol, preliminaryPlan, context),
-    safeAnalyst(input.symbol, preliminaryPlan, context),
-    neutralAnalyst(input.symbol, preliminaryPlan, context),
+    runRisk("risky", "风控内阁 · 激进派", () =>
+      riskyAnalyst(input.symbol, preliminaryPlan, context),
+    ),
+    runRisk("safe", "风控内阁 · 保守派", () =>
+      safeAnalyst(input.symbol, preliminaryPlan, context),
+    ),
+    runRisk("neutral", "风控内阁 · 中立派", () =>
+      neutralAnalyst(input.symbol, preliminaryPlan, context),
+    ),
   ]);
 
   await nextProgress("risk-judge", "风控法官生成最终裁定");
   const judge = await riskJudge(input.symbol, preliminaryPlan, risky, safe, neutral, context);
+  await emitArtifact(onEvent, {
+    artifactType: "risk",
+    side: "judge",
+    title: "风控法官最终裁定",
+    markdown: judge,
+  });
+
   const graphMermaid = getFlowGraphMermaid();
   const baseResult: Omit<AnalysisResult, "finalReport"> = {
     symbol: input.symbol,

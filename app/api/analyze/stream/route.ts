@@ -68,7 +68,11 @@ export async function POST(request: Request) {
         try {
           send("status", { message: "请求已接收，开始多智能体分析..." });
           const result = await runTradinsAnalysis(input, (event) => {
-            send("progress", event);
+            if (event.type === "progress") {
+              send("progress", event);
+              return;
+            }
+            send("artifact", event);
           });
 
           send("status", { message: "分析完成，正在保存记录..." });
