@@ -275,6 +275,64 @@ select:focus-visible {
   font-size: 12px;
 }
 
+.anchor-target {
+  scroll-margin-top: calc(84px + env(safe-area-inset-top));
+}
+
+.quick-nav {
+  position: sticky;
+  top: calc(10px + env(safe-area-inset-top));
+  z-index: 4;
+  display: grid;
+  gap: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.quick-nav-select-wrap {
+  display: none;
+  margin: 0;
+}
+
+.quick-nav-select-wrap span {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.quick-nav-list {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  overflow: auto;
+  padding-bottom: 2px;
+}
+
+.quick-nav-btn {
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  min-height: 34px;
+  flex: 0 0 auto;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
+}
+
+.quick-nav-btn:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: #3f5f79;
+  background: #182535;
+}
+
+.quick-nav-top {
+  margin-left: auto;
+  border-color: #35546e;
+}
+
 .record-list {
   display: grid;
   gap: 8px;
@@ -477,6 +535,10 @@ select:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .quick-nav {
+    position: static;
+  }
+
   .records-sidebar {
     position: static;
     max-height: none;
@@ -553,6 +615,20 @@ select:focus-visible {
 
   .artifact-stream-list {
     max-height: 360px;
+  }
+
+  .quick-nav-select-wrap {
+    display: grid;
+    gap: 6px;
+  }
+
+  .quick-nav-btn {
+    min-height: 36px;
+    padding: 8px 11px;
+  }
+
+  .quick-nav-top {
+    margin-left: 0;
   }
 
   .artifact-stream-head {

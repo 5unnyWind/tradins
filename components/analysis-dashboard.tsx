@@ -89,6 +89,11 @@ type StreamArtifactItem = {
   meta: string;
 };
 
+type QuickJumpTarget = {
+  id: string;
+  label: string;
+};
+
 function parseSseFrame(frame: string): ParsedSseFrame | null {
   const lines = frame.split("\n");
   let event = "message";
@@ -237,12 +242,40 @@ export function AnalysisDashboard({
     };
   }, [result]);
 
+  const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
+    const targets: QuickJumpTarget[] = [
+      { id: "section-flow", label: "数据流图" },
+      { id: "section-stream", label: "实时分析产物" },
+    ];
+    if (!result) return targets;
+    targets.push(
+      { id: "section-market-snapshot", label: "市场快照" },
+      { id: "section-preliminary-plan", label: "交易计划" },
+      { id: "section-analysts", label: "四位分析师" },
+      { id: "section-debates", label: "多空辩论" },
+    );
+    for (const turn of result.debates) {
+      targets.push({
+        id: `section-debate-round-${turn.roundId}`,
+        label: `第 ${turn.roundId} 轮辩论`,
+      });
+    }
+    targets.push({ id: "section-risk", label: "风控内阁" });
+    return targets;
+  }, [result]);
+
   function pushStatusLine(line: string) {
     setStatus(line);
     setStatusLog((prev) => {
       if (prev[0] === line) return prev;
       return [line, ...prev].slice(0, 8);
     });
+  }
+
+  function jumpToSection(targetId: string) {
+    const element = document.getElementById(targetId);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function loadMoreRecords() {
@@ -521,12 +554,58 @@ export function AnalysisDashboard({
             </form>
           </section>
 
-          <section className="panel">
+          <section className="panel quick-nav">
+            <div className="panel-header">
+              <h2>快速定位</h2>
+              <span>{quickJumpTargets.length} 个锚点</span>
+            </div>
+            <label className="quick-nav-select-wrap">
+              <span>快速跳转</span>
+              <select
+                defaultValue=""
+                aria-label="快速跳转到分析区块"
+                onChange={(e) => {
+                  const targetId = e.target.value;
+                  if (!targetId) return;
+                  jumpToSection(targetId);
+                  e.currentTarget.value = "";
+                }}
+              >
+                <option value="">选择目标区块...</option>
+                {quickJumpTargets.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="quick-nav-list" role="navigation" aria-label="分析区块目录">
+              {quickJumpTargets.map((target) => (
+                <button
+                  key={target.id}
+                  type="button"
+                  className="quick-nav-btn"
+                  onClick={() => jumpToSection(target.id)}
+                >
+                  {target.label}
+                </button>
+              ))}
+              <button
+                type="button"
+                className="quick-nav-btn quick-nav-top"
+                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+              >
+                回到顶部
+              </button>
+            </div>
+          </section>
+
+          <section className="panel anchor-target" id="section-flow">
             <h2>数据流图</h2>
             {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
           </section>
 
-          <section className="panel">
+          <section className="panel anchor-target" id="section-stream">
             <div className="panel-header">
               <h2>实时分析产物</h2>
               <span>{streamArtifacts.length ? `${streamArtifacts.length} 条` : "等待产物"}</span>
@@ -553,7 +632,7 @@ export function AnalysisDashboard({
           {result ? (
             <>
               <section className="grid cols-2">
-                <article className="panel">
+                <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
                   <div className="metric-grid">
                     <div className="metric">
@@ -576,13 +655,13 @@ export function AnalysisDashboard({
                   <PriceChart labels={chartData.labels} values={chartData.values} />
                 </article>
 
-                <article className="panel">
+                <article className="panel anchor-target" id="section-preliminary-plan">
                   <h2>研究主管初步交易计划</h2>
                   <MarkdownView markdown={result.preliminaryPlan} />
                 </article>
               </section>
 
-              <section className="panel">
+              <section className="panel anchor-target" id="section-analysts">
                 <h2>四位分析师</h2>
                 <div className="card-grid">
                   <div className="card">
@@ -604,11 +683,15 @@ export function AnalysisDashboard({
                 </div>
               </section>
 
-              <section className="panel">
+              <section className="panel anchor-target" id="section-debates">
                 <h2>多空辩论</h2>
                 <div className="timeline">
                   {result.debates.map((turn) => (
-                    <article className="turn" key={turn.roundId}>
+                    <article
+                      className="turn anchor-target"
+                      id={`section-debate-round-${turn.roundId}`}
+                      key={turn.roundId}
+                    >
                       <span className="badge">第 {turn.roundId} 轮</span>
                       <div className="grid cols-2">
                         <div className="card">
@@ -625,7 +708,7 @@ export function AnalysisDashboard({
                 </div>
               </section>
 
-              <section className="panel">
+              <section className="panel anchor-target" id="section-risk">
                 <h2>风控内阁与最终裁定</h2>
                 <div className="card-grid triple">
                   <div className="card">
