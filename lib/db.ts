@@ -94,9 +94,11 @@ export async function saveRecord(
 }
 
 export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+
   if (!hasVercelPostgres) {
     const records = await readLocalStore();
-    return records.map((r) => r.meta).slice(0, limit);
+    return records.map((r) => r.meta).slice(0, safeLimit);
   }
 
   await ensureTable();
@@ -104,8 +106,8 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
   const rows = (await sql`
     SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
     FROM analysis_records
-    ORDER BY created_at DESC
-    LIMIT ${limit}
+    ORDER BY id DESC
+    LIMIT 200
   `) as {
     rows: Array<{
       id: number;
@@ -117,7 +119,7 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
     }>;
   };
 
-  return rows.rows.map((row) => ({
+  return rows.rows.slice(0, safeLimit).map((row) => ({
     id: row.id,
     symbol: row.symbol,
     analysisMode: row.analysis_mode as AnalysisRecordMeta["analysisMode"],
