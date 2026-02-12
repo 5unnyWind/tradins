@@ -119,14 +119,62 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
     }>;
   };
 
-  return rows.rows.slice(0, safeLimit).map((row) => ({
+  const mapMeta = (row: {
+    id: number;
+    symbol: string;
+    analysis_mode: string;
+    debate_rounds: number;
+    recommendation: string | null;
+    created_at: string;
+  }): AnalysisRecordMeta => ({
     id: row.id,
     symbol: row.symbol,
     analysisMode: row.analysis_mode as AnalysisRecordMeta["analysisMode"],
     debateRounds: row.debate_rounds,
     recommendation: row.recommendation,
     createdAt: new Date(row.created_at).toISOString(),
-  }));
+  });
+
+  const listed = rows.rows.slice(0, safeLimit).map(mapMeta);
+
+  // Vercel Postgres / Neon occasionally returns partial rows for bulk scans.
+  // Fallback to id-desc point lookups when bulk result is suspiciously short.
+  const maxIdRow = (await sql`
+    SELECT COALESCE(MAX(id), 0)::int AS max_id
+    FROM analysis_records
+  `) as {
+    rows: Array<{ max_id: number }>;
+  };
+  const maxId = Number(maxIdRow.rows[0]?.max_id ?? 0);
+  const likelyPartial = maxId > listed.length && listed.length < safeLimit;
+
+  if (!likelyPartial) {
+    return listed;
+  }
+
+  const reconstructed: AnalysisRecordMeta[] = [];
+  const minCursor = Math.max(1, maxId - safeLimit * 50);
+  for (let cursor = maxId; cursor >= minCursor && reconstructed.length < safeLimit; cursor -= 1) {
+    const row = (await sql`
+      SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
+      FROM analysis_records
+      WHERE id = ${cursor}
+      LIMIT 1
+    `) as {
+      rows: Array<{
+        id: number;
+        symbol: string;
+        analysis_mode: string;
+        debate_rounds: number;
+        recommendation: string | null;
+        created_at: string;
+      }>;
+    };
+    const first = row.rows[0];
+    if (first) reconstructed.push(mapMeta(first));
+  }
+
+  return reconstructed.length ? reconstructed : listed;
 }
 
 export async function getRecord(
