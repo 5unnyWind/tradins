@@ -199,6 +199,7 @@ export function AnalysisDashboard({
   const [statusLog, setStatusLog] = useState<string[]>([]);
   const [streamArtifacts, setStreamArtifacts] = useState<StreamArtifactItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
 
   const initialPage: RecordsPageResponse = {
@@ -417,42 +418,65 @@ export function AnalysisDashboard({
       <div className="bg-orb orb-a" />
       <div className="bg-orb orb-b" />
 
-      <div className="dashboard-layout">
-        <aside className="panel records-sidebar">
-          <div className="panel-header">
-            <h2>分析记录</h2>
-            <span>
-              {records.length} 条{recordsHasMore ? " · 下滑加载" : ""}
-            </span>
-          </div>
-          <div className="record-list records-scroll" onScroll={onRecordListScroll}>
-            {records.map((record) => (
+      <div className={`dashboard-layout${isSidebarCollapsed ? " sidebar-collapsed" : ""}`}>
+        <aside className={`panel records-sidebar${isSidebarCollapsed ? " is-collapsed" : ""}`}>
+          <div className="panel-header records-sidebar-header">
+            <h2>{isSidebarCollapsed ? "记录" : "分析记录"}</h2>
+            <div className="records-sidebar-actions">
+              {isSidebarCollapsed ? null : (
+                <span className="records-sidebar-meta">
+                  {records.length} 条{recordsHasMore ? " · 下滑加载" : ""}
+                </span>
+              )}
               <button
                 type="button"
-                className="record-item"
-                key={record.id}
-                onClick={() => {
-                  loadRecord(record.id).catch((err) =>
-                    pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
-                  );
-                }}
+                className="sidebar-toggle-btn"
+                aria-expanded={!isSidebarCollapsed}
+                aria-controls="records-scroll"
+                onClick={() => setIsSidebarCollapsed((prev) => !prev)}
               >
-                <div>
-                  <strong>{record.symbol}</strong>
-                  <span>
-                    {record.analysisMode} · {record.debateRounds} 轮
-                  </span>
-                </div>
-                <div>
-                  <em>{record.recommendation ?? "-"}</em>
-                  <small>{new Date(record.createdAt).toLocaleString()}</small>
-                </div>
+                {isSidebarCollapsed ? "展开" : "折叠"}
               </button>
-            ))}
-            {!records.length ? <div className="empty-state">暂无记录</div> : null}
-            {isLoadingMoreRecords ? <div className="empty-state">加载更多中...</div> : null}
-            {!recordsHasMore && records.length ? <div className="empty-state">已加载全部记录</div> : null}
+            </div>
           </div>
+          {!isSidebarCollapsed ? (
+            <div className="record-list records-scroll" id="records-scroll" onScroll={onRecordListScroll}>
+              {records.map((record) => (
+                <button
+                  type="button"
+                  className="record-item"
+                  key={record.id}
+                  onClick={() => {
+                    loadRecord(record.id).catch((err) =>
+                      pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
+                    );
+                  }}
+                >
+                  <div>
+                    <strong>{record.symbol}</strong>
+                    <span>
+                      {record.analysisMode} · {record.debateRounds} 轮
+                    </span>
+                  </div>
+                  <div>
+                    <em>{record.recommendation ?? "-"}</em>
+                    <small>{new Date(record.createdAt).toLocaleString()}</small>
+                  </div>
+                </button>
+              ))}
+              {!records.length ? <div className="empty-state">暂无记录</div> : null}
+              {isLoadingMoreRecords ? <div className="empty-state">加载更多中...</div> : null}
+              {!recordsHasMore && records.length ? <div className="empty-state">已加载全部记录</div> : null}
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="records-collapsed-hint"
+              onClick={() => setIsSidebarCollapsed(false)}
+            >
+              {records.length} 条记录
+            </button>
+          )}
         </aside>
 
         <div className="dashboard-main">
