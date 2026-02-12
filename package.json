@@ -1,0 +1,35 @@
+{
+  "name": "tradins-next",
+  "version": "0.1.0",
+  "private": true,
+  "description": "tradins multi-agent stock analysis on Next.js for Vercel",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vercel/postgres": "^0.10.0",
+    "chart.js": "^4.4.4",
+    "mermaid": "^11.4.1",
+    "next": "^14.2.15",
+    "openai": "^5.1.0",
+    "react": "^18.3.1",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "swr": "^2.2.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.15",
+    "typescript": "^5.6.3"
+  }
+}

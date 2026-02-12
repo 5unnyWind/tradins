@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+*.egg-info/
+build/
+dist/
+node_modules/
+.next/
+out/
+*.log
+tsconfig.tsbuildinfo

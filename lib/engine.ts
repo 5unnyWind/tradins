@@ -1,0 +1,171 @@
+import {
+  bearResearcher,
+  bullResearcher,
+  fundamentalsAnalyst,
+  marketAnalyst,
+  neutralAnalyst,
+  newsAnalyst,
+  researchManager,
+  riskJudge,
+  riskyAnalyst,
+  safeAnalyst,
+  socialAnalyst,
+} from "@/lib/agents";
+import { getFlowGraphMermaid } from "@/lib/config";
+import { fetchFundamentalSnapshot } from "@/lib/data/fundamentals";
+import { fetchMarketSnapshot } from "@/lib/data/market";
+import { fetchNewsSnapshot } from "@/lib/data/news";
+import { fetchSocialSnapshot } from "@/lib/data/social";
+import type {
+  AnalysisInput,
+  AnalysisResult,
+  DebateTurn,
+  StageBundle,
+} from "@/lib/types";
+
+export function sanitizeForJson<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "number") {
+    return (Number.isFinite(value) ? value : null) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeForJson(item)) as T;
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = sanitizeForJson(v);
+    }
+    return out as T;
+  }
+  return value;
+}
+
+async function collectStageBundle(input: AnalysisInput): Promise<StageBundle> {
+  const [market, fundamentals, news, social] = await Promise.all([
+    fetchMarketSnapshot(input.symbol, input.period, input.interval),
+    fetchFundamentalSnapshot(input.symbol),
+    fetchNewsSnapshot(input.symbol, 12),
+    fetchSocialSnapshot(input.symbol, 30),
+  ]);
+  return { market, fundamentals, news, social };
+}
+
+function renderFinalMarkdown(input: AnalysisInput, result: Omit<AnalysisResult, "finalReport">): string {
+  const generatedAt = new Date().toISOString();
+  const debateText = result.debates
+    .map(
+      (d) =>
+        `### 第 ${d.roundId} 轮\n\n#### 多头观点\n${d.bullMarkdown}\n\n#### 空头观点\n${d.bearMarkdown}`,
+    )
+    .join("\n\n");
+
+  return `# tradins 多智能体股票分析报告
+
+- 股票: \`${input.symbol}\`
+- 模式: \`${input.analysisMode}\`
+- 辩论轮次: \`${input.debateRounds}\`
+- 生成时间(UTC): \`${generatedAt}\`
+
+## 数据流图
+\`\`\`mermaid
+${result.graphMermaid}
+\`\`\`
+
+## 第一阶段：四位分析师报告
+### 市场分析师
+${result.analystReports.market.markdown}
+
+### 基本面分析师
+${result.analystReports.fundamentals.markdown}
+
+### 新闻分析师
+${result.analystReports.news.markdown}
+
+### 舆情分析师
+${result.analystReports.social.markdown}
+
+## 第二阶段：多空辩论
+${debateText || "_无辩论记录_"}
+
+## 第三阶段：研究主管初步交易计划
+${result.preliminaryPlan}
+
+## 第四阶段：风控内阁
+### 激进派风控
+${result.riskReports.risky}
+
+### 保守派风控
+${result.riskReports.safe}
+
+### 中立派风控
+${result.riskReports.neutral}
+
+## 风控法官最终裁定
+${result.riskReports.judge}
+`;
+}
+
+export function extractRecommendation(markdown: string): string | null {
+  const hit = markdown.match(/(买入|观望|减仓|卖出)/);
+  return hit ? hit[1] : null;
+}
+
+export async function runTradinsAnalysis(input: AnalysisInput): Promise<AnalysisResult> {
+  const stageBundle = await collectStageBundle(input);
+
+  const [marketReport, fundamentalsReport, newsReport, socialReport] = await Promise.all([
+    marketAnalyst(input.symbol, stageBundle.market as unknown as Record<string, unknown>),
+    fundamentalsAnalyst(input.symbol, stageBundle.fundamentals as unknown as Record<string, unknown>),
+    newsAnalyst(input.symbol, stageBundle.news as unknown as Record<string, unknown>),
+    socialAnalyst(input.symbol, stageBundle.social as unknown as Record<string, unknown>),
+  ]);
+  const analystReports = {
+    market: marketReport,
+    fundamentals: fundamentalsReport,
+    news: newsReport,
+    social: socialReport,
+  };
+
+  const debates: DebateTurn[] = [];
+  const history: Array<Record<string, string>> = [];
+  for (let round = 1; round <= input.debateRounds; round += 1) {
+    const bull = await bullResearcher(input.symbol, round, analystReports, history);
+    const bear = await bearResearcher(input.symbol, round, analystReports, [...history, { round: String(round), bull }]);
+    const turn: DebateTurn = { roundId: round, bullMarkdown: bull, bearMarkdown: bear };
+    debates.push(turn);
+    history.push({ round: String(round), bull, bear });
+  }
+
+  const preliminaryPlan = await researchManager(input.symbol, analystReports, history);
+  const context = {
+    stageBundle,
+    analystReports: Object.fromEntries(
+      Object.entries(analystReports).map(([k, v]) => [k, v.markdown]),
+    ),
+    debates,
+  };
+
+  const [risky, safe, neutral] = await Promise.all([
+    riskyAnalyst(input.symbol, preliminaryPlan, context),
+    safeAnalyst(input.symbol, preliminaryPlan, context),
+    neutralAnalyst(input.symbol, preliminaryPlan, context),
+  ]);
+
+  const judge = await riskJudge(input.symbol, preliminaryPlan, risky, safe, neutral, context);
+  const graphMermaid = getFlowGraphMermaid();
+  const baseResult: Omit<AnalysisResult, "finalReport"> = {
+    symbol: input.symbol,
+    analystReports,
+    debates,
+    preliminaryPlan,
+    riskReports: { risky, safe, neutral, judge },
+    stageBundle,
+    graphMermaid,
+  };
+  const finalReport = renderFinalMarkdown(input, baseResult);
+  return sanitizeForJson({
+    ...baseResult,
+    finalReport,
+  });
+}
