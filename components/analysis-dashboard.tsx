@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useMemo, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
-import type { AnalysisRecordMeta, AnalysisResult } from "@/lib/types";
+import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot } from "@/lib/types";
 
 const PriceChart = dynamic(
   () => import("@/components/price-chart").then((m) => m.PriceChart),
@@ -128,6 +128,13 @@ function buildStockIntro(result: AnalysisResult): string {
   return `${subject}，${details.join("，")}。`;
 }
 
+function buildStreamStockIntro(snapshot: MarketSnapshot): string {
+  const trend = firstText(snapshot.technicals?.trend) ?? "未知";
+  const symbolLabel = firstText(snapshot.symbol) ?? "当前股票";
+  const cycle = `${snapshot.period}/${snapshot.interval}`;
+  return `${symbolLabel} 市场数据已加载（${cycle}），当前技术趋势：${trend}。`;
+}
+
 interface DashboardProps {
   initialRecords: AnalysisRecordMeta[];
   initialStorageMode: "vercel_postgres" | "memory";
@@ -155,13 +162,16 @@ type AnalyzeProgressPayload = {
   totalSteps?: number;
 };
 
-type ArtifactType = "analyst" | "debate" | "plan" | "risk";
+type ArtifactType = "analyst" | "debate" | "plan" | "risk" | "snapshot";
+type TextArtifactType = Exclude<ArtifactType, "snapshot">;
 
 type AnalyzeArtifactPayload = {
   type?: "artifact";
   artifactType?: ArtifactType;
   title?: string;
   markdown?: string;
+  payload?: unknown;
+  snapshotType?: "market";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -192,6 +202,7 @@ type StreamCardsState = {
   preliminaryPlan: string | null;
   riskReports: Partial<Record<RiskArtifactSide, string>>;
   debates: Record<number, StreamDebateState>;
+  marketSnapshot: MarketSnapshot | null;
 };
 
 type StreamDebateTurn = {
@@ -206,13 +217,18 @@ type RenderDebateTurn = {
   bearMarkdown?: string;
 };
 
-type ArtifactUpdatePayload = {
-  artifactType: ArtifactType;
-  markdown: string;
-  key?: AnalyzeArtifactPayload["key"];
-  roundId?: number;
-  side?: AnalyzeArtifactPayload["side"];
-};
+type ArtifactUpdatePayload =
+  | {
+      artifactType: "snapshot";
+      marketSnapshot: MarketSnapshot;
+    }
+  | {
+      artifactType: TextArtifactType;
+      markdown: string;
+      key?: AnalyzeArtifactPayload["key"];
+      roundId?: number;
+      side?: AnalyzeArtifactPayload["side"];
+    };
 
 type QuickJumpTarget = {
   id: string;
@@ -225,18 +241,51 @@ function createEmptyStreamCardsState(): StreamCardsState {
     preliminaryPlan: null,
     riskReports: {},
     debates: {},
+    marketSnapshot: null,
+  };
+}
+
+function toMarketSnapshot(value: unknown): MarketSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<MarketSnapshot>;
+  if (typeof snapshot.symbol !== "string") return null;
+  if (!snapshot.technicals || typeof snapshot.technicals !== "object") return null;
+  if (typeof snapshot.period !== "string" || typeof snapshot.interval !== "string") return null;
+  const recentBars =
+    snapshot.recentBars && typeof snapshot.recentBars === "object"
+      ? (snapshot.recentBars as MarketSnapshot["recentBars"])
+      : {};
+  return {
+    symbol: snapshot.symbol,
+    period: snapshot.period,
+    interval: snapshot.interval,
+    points: Number.isFinite(Number(snapshot.points)) ? Number(snapshot.points) : 0,
+    technicals: snapshot.technicals as MarketSnapshot["technicals"],
+    recentBars,
+    error: typeof snapshot.error === "string" ? snapshot.error : undefined,
   };
 }
 
 function toArtifactUpdate(data: unknown): ArtifactUpdatePayload | null {
   if (!data || typeof data !== "object") return null;
   const payload = data as AnalyzeArtifactPayload;
-  if (!payload.markdown || typeof payload.markdown !== "string") return null;
   if (!payload.artifactType) return null;
+
+  if (payload.artifactType === "snapshot") {
+    if (payload.snapshotType !== "market") return null;
+    const marketSnapshot = toMarketSnapshot(payload.payload);
+    if (!marketSnapshot) return null;
+    return {
+      artifactType: "snapshot",
+      marketSnapshot,
+    };
+  }
+
+  if (!payload.markdown || typeof payload.markdown !== "string") return null;
   const markdown = payload.markdown.trim();
   if (!markdown) return null;
   return {
-    artifactType: payload.artifactType,
+    artifactType: payload.artifactType as TextArtifactType,
     markdown,
     key: payload.key,
     roundId: payload.roundId,
@@ -250,7 +299,13 @@ function applyArtifactUpdate(prev: StreamCardsState, payload: ArtifactUpdatePayl
     preliminaryPlan: prev.preliminaryPlan,
     riskReports: { ...prev.riskReports },
     debates: { ...prev.debates },
+    marketSnapshot: prev.marketSnapshot,
   };
+
+  if (payload.artifactType === "snapshot") {
+    next.marketSnapshot = payload.marketSnapshot;
+    return next;
+  }
 
   if (payload.artifactType === "analyst") {
     const key = payload.key;
@@ -383,20 +438,22 @@ export function AnalysisDashboard({
   const records = pages.flatMap((page) => page.records);
   const recordsHasMore = pages[pages.length - 1]?.hasMore ?? false;
   const isLoadingMoreRecords = isValidatingRecords && size > pages.length;
+  const displayedMarketSnapshot = result?.stageBundle.market ?? streamCards.marketSnapshot;
 
   const chartData = useMemo(() => {
-    const bars = result?.stageBundle.market.recentBars ?? {};
+    const bars = displayedMarketSnapshot?.recentBars ?? {};
     const entries = Object.entries(bars).sort((a, b) => a[0].localeCompare(b[0]));
     return {
       labels: entries.map(([k]) => k),
       values: entries.map(([, v]) => Number(v.Close ?? 0)),
     };
-  }, [result]);
+  }, [displayedMarketSnapshot]);
 
   const stockIntro = useMemo(() => {
-    if (!result) return null;
-    return buildStockIntro(result);
-  }, [result]);
+    if (result) return buildStockIntro(result);
+    if (displayedMarketSnapshot) return buildStreamStockIntro(displayedMarketSnapshot);
+    return null;
+  }, [displayedMarketSnapshot, result]);
 
   const streamDebates = useMemo<StreamDebateTurn[]>(() => {
     return Object.entries(streamCards.debates)
@@ -442,7 +499,8 @@ export function AnalysisDashboard({
       safeMarkdown ||
       neutralMarkdown ||
       judgeMarkdown ||
-      displayedDebates.length,
+      displayedDebates.length ||
+      Boolean(displayedMarketSnapshot),
     );
   }, [
     marketReportMarkdown,
@@ -455,6 +513,7 @@ export function AnalysisDashboard({
     neutralMarkdown,
     judgeMarkdown,
     displayedDebates.length,
+    displayedMarketSnapshot,
   ]);
 
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
@@ -834,7 +893,7 @@ export function AnalysisDashboard({
               <section className="grid cols-2">
                 <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
-                  {result ? (
+                  {displayedMarketSnapshot ? (
                     <>
                       {stockIntro ? (
                         <div className="stock-intro">
@@ -845,19 +904,19 @@ export function AnalysisDashboard({
                       <div className="metric-grid">
                         <div className="metric">
                           <span>现价</span>
-                          <strong>{fmtNum(result.stageBundle.market.technicals.price)}</strong>
+                          <strong>{fmtNum(displayedMarketSnapshot.technicals.price)}</strong>
                         </div>
                         <div className="metric">
                           <span>1日涨跌</span>
-                          <strong>{fmtPct(result.stageBundle.market.technicals.changePct1d)}</strong>
+                          <strong>{fmtPct(displayedMarketSnapshot.technicals.changePct1d)}</strong>
                         </div>
                         <div className="metric">
                           <span>RSI14</span>
-                          <strong>{fmtNum(result.stageBundle.market.technicals.rsi14)}</strong>
+                          <strong>{fmtNum(displayedMarketSnapshot.technicals.rsi14)}</strong>
                         </div>
                         <div className="metric">
                           <span>量比20d</span>
-                          <strong>{fmtNum(result.stageBundle.market.technicals.volumeRatio20d)}</strong>
+                          <strong>{fmtNum(displayedMarketSnapshot.technicals.volumeRatio20d)}</strong>
                         </div>
                       </div>
                       <PriceChart labels={chartData.labels} values={chartData.values} />

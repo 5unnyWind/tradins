@@ -34,9 +34,11 @@ export interface AnalysisProgressEvent {
 
 export interface AnalysisArtifactEvent {
   type: "artifact";
-  artifactType: "analyst" | "debate" | "plan" | "risk";
+  artifactType: "analyst" | "debate" | "plan" | "risk" | "snapshot";
   title: string;
-  markdown: string;
+  markdown?: string;
+  payload?: unknown;
+  snapshotType?: "market";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -86,12 +88,23 @@ export function sanitizeForJson<T>(value: T): T {
   return value;
 }
 
-async function collectStageBundle(input: AnalysisInput): Promise<StageBundle> {
-  const [market, fundamentals, news, social] = await Promise.all([
-    fetchMarketSnapshot(input.symbol, input.period, input.interval),
-    fetchFundamentalSnapshot(input.symbol),
-    fetchNewsSnapshot(input.symbol, 12),
-    fetchSocialSnapshot(input.symbol, 30),
+async function collectStageBundle(
+  input: AnalysisInput,
+  onMarketReady?: (market: StageBundle["market"]) => void | Promise<void>,
+): Promise<StageBundle> {
+  const marketPromise = fetchMarketSnapshot(input.symbol, input.period, input.interval);
+  const fundamentalsPromise = fetchFundamentalSnapshot(input.symbol);
+  const newsPromise = fetchNewsSnapshot(input.symbol, 12);
+  const socialPromise = fetchSocialSnapshot(input.symbol, 30);
+
+  const market = await marketPromise;
+  if (onMarketReady) {
+    await onMarketReady(market);
+  }
+  const [fundamentals, news, social] = await Promise.all([
+    fundamentalsPromise,
+    newsPromise,
+    socialPromise,
   ]);
   return { market, fundamentals, news, social };
 }
@@ -190,7 +203,14 @@ export async function runTradinsAnalysis(
   };
 
   await nextProgress("collect", "采集市场/基本面/新闻/舆情数据中");
-  const stageBundle = await collectStageBundle(input);
+  const stageBundle = await collectStageBundle(input, async (market) => {
+    await emitArtifact(onEvent, {
+      artifactType: "snapshot",
+      snapshotType: "market",
+      title: "市场快照",
+      payload: sanitizeForJson(market),
+    });
+  });
 
   await nextProgress("analysts", "四位分析师并行研判中");
   const runAnalyst = async (
