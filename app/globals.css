@@ -424,7 +424,6 @@ button.quick-nav-pill:hover:not(:disabled) {
 .record-list {
   display: grid;
   gap: 8px;
-  content-visibility: auto;
 }
 
 .record-item {
@@ -439,16 +438,22 @@ button.quick-nav-pill:hover:not(:disabled) {
   align-items: center;
   gap: 12px;
   min-height: 0;
+  overflow: hidden;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .record-item-main {
   min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .record-item-symbol-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .record-item strong {
@@ -476,7 +481,8 @@ button.quick-nav-pill:hover:not(:disabled) {
 
 .record-item-sub {
   display: block;
-  margin-top: 3px;
+  margin-top: 0;
+  line-height: 1.35;
 }
 
 .record-item-side {
@@ -782,7 +788,8 @@ button.record-item:hover:not(:disabled) {
   }
 
   .record-item {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     align-items: stretch;
     padding: 12px 12px 11px;
     gap: 7px;
@@ -800,21 +807,17 @@ button.record-item:hover:not(:disabled) {
   .record-item-side {
     width: 100%;
     min-width: 0;
-    display: grid;
-    grid-template-columns: 1fr auto;
+    display: flex;
     align-items: center;
-    justify-items: stretch;
+    justify-content: space-between;
     gap: 10px;
-  }
-
-  .record-item-sub {
-    margin-top: 4px;
-    line-height: 1.35;
   }
 
   .record-item-side small {
     text-align: right;
     white-space: nowrap;
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
   }
 
   .record-item em {
@@ -897,7 +900,7 @@ button.record-item:hover:not(:disabled) {
   }
 
   .record-item-side {
-    grid-template-columns: 1fr auto;
+    display: flex;
     gap: 8px;
   }
 
