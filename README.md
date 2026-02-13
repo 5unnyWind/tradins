@@ -76,6 +76,8 @@ npm run dev
 - 鉴权方式：
   - 自定义调用：`x-scheduler-token` 或 `Authorization: Bearer <SCHEDULER_RUN_TOKEN>`
   - Vercel Cron：设置 `CRON_SECRET`，平台会自动携带 `Authorization: Bearer <CRON_SECRET>`
+- `vercel.json` 已内置 Cron 配置（`/api/scheduler/run`）
+  - 注意：Vercel Hobby 仅支持“每天一次”Cron。若需要分钟级调度，请升级 Pro 或使用外部 Cron 调 `POST/GET /api/scheduler/run`。
 
 ## 你会在页面看到什么
 
