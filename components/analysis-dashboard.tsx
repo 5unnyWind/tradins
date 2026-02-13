@@ -19,8 +19,14 @@ const MermaidView = dynamic(
   { ssr: false },
 );
 
+const NO_CACHE_HEADERS: HeadersInit = {
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache",
+};
+
 const fetcher = async (url: string) => {
-  const res = await fetch(url, { cache: "no-store" });
+  const bust = `${url}${url.includes("?") ? "&" : "?"}_=${Date.now()}`;
+  const res = await fetch(bust, { cache: "no-store", headers: NO_CACHE_HEADERS });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 };
@@ -489,6 +495,7 @@ export function AnalysisDashboard({
     const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
     const response = await fetch(`/api/records?limit=${RECORD_PAGE_SIZE}&_=${encodeURIComponent(nonce)}`, {
       cache: "no-store",
+      headers: NO_CACHE_HEADERS,
     });
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
@@ -625,7 +632,10 @@ export function AnalysisDashboard({
   async function loadRecord(id: number) {
     pushStatusLine(`正在加载记录 #${id} ...`);
     setStreamCards(createEmptyStreamCardsState());
-    const response = await fetch(`/api/records/${id}`, { cache: "no-store" });
+    const response = await fetch(`/api/records/${id}`, {
+      cache: "no-store",
+      headers: NO_CACHE_HEADERS,
+    });
     const json = await response.json();
     if (!response.ok || !json.ok) {
       throw new Error(json.error ?? `HTTP ${response.status}`);
