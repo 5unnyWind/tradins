@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState, type UIEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
 import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot } from "@/lib/types";
@@ -447,6 +447,8 @@ export function AnalysisDashboard({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
+  const sidebarRef = useRef<HTMLElement | null>(null);
+  const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
 
   const initialPage: RecordsPageResponse = {
     records: initialRecords,
@@ -582,6 +584,23 @@ export function AnalysisDashboard({
     targets.push({ id: "section-risk", label: "风控内阁" });
     return targets;
   }, [showAnalysisPanels, displayedDebates]);
+
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (sidebarRef.current?.contains(target)) return;
+      if (sidebarToggleRef.current?.contains(target)) return;
+      setIsSidebarOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isSidebarOpen]);
 
   function pushStatusLine(line: string) {
     setStatus(line);
@@ -768,6 +787,7 @@ export function AnalysisDashboard({
 
       <div className="dashboard-layout">
         <aside
+          ref={sidebarRef}
           className={`panel records-sidebar records-drawer${isSidebarOpen ? " is-open" : ""}`}
           id="records-drawer"
           aria-hidden={!isSidebarOpen}
@@ -814,6 +834,7 @@ export function AnalysisDashboard({
           </div>
         </aside>
         <button
+          ref={sidebarToggleRef}
           type="button"
           className={`records-drawer-toggle${isSidebarOpen ? " is-open" : ""}`}
           aria-expanded={isSidebarOpen}
