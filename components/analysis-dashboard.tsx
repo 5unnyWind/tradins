@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
 import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot } from "@/lib/types";
@@ -483,6 +483,7 @@ export function AnalysisDashboard({
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
   const sidebarRef = useRef<HTMLElement | null>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
+  const recordListRef = useRef<HTMLDivElement | null>(null);
 
   const initialPage: RecordsPageResponse = {
     records: initialRecords,
@@ -654,16 +655,32 @@ export function AnalysisDashboard({
     element.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  function loadMoreRecords() {
+  const loadMoreRecords = useCallback(() => {
     if (!recordsHasMore || isLoadingMoreRecords) return;
     void setSize((current) => current + 1);
-  }
+  }, [isLoadingMoreRecords, recordsHasMore, setSize]);
 
   function onRecordListScroll(event: UIEvent<HTMLDivElement>) {
     const element = event.currentTarget;
     const nearBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 80;
     if (nearBottom) loadMoreRecords();
   }
+
+  useEffect(() => {
+    if (!isSidebarOpen || !recordsHasMore || isLoadingMoreRecords) return;
+    const element = recordListRef.current;
+    if (!element) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      if (element.scrollHeight <= element.clientHeight + 2) {
+        loadMoreRecords();
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isSidebarOpen, records.length, recordsHasMore, isLoadingMoreRecords, loadMoreRecords]);
 
   async function refreshLatestRecords(seed?: number): Promise<void> {
     const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
@@ -836,7 +853,12 @@ export function AnalysisDashboard({
               {records.length} 条{recordsHasMore ? " · 下滑加载" : ""}
             </span>
           </div>
-          <div className="record-list records-scroll" id="records-scroll" onScroll={onRecordListScroll}>
+          <div
+            ref={recordListRef}
+            className="record-list records-scroll"
+            id="records-scroll"
+            onScroll={onRecordListScroll}
+          >
             {records.map((record) => (
               <button
                 type="button"

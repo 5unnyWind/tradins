@@ -120,6 +120,8 @@ h3 {
   padding-right: 0;
   min-height: 0;
   overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .records-drawer-toggle {
@@ -441,6 +443,7 @@ button.quick-nav-pill:hover:not(:disabled) {
   overflow: hidden;
   appearance: none;
   -webkit-appearance: none;
+  touch-action: pan-y;
 }
 
 .record-item-main {
