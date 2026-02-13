@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
 import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot } from "@/lib/types";
@@ -883,38 +883,48 @@ export function AnalysisDashboard({
             onScroll={onRecordListScroll}
           >
             {records.map((record, index) => {
-              const previousRecord = records[index - 1];
-              const startsNewDateGroup =
-                index > 0 && getRecordDateKey(previousRecord.createdAt) !== getRecordDateKey(record.createdAt);
+              const currentDateKey = getRecordDateKey(record.createdAt);
+              const previousDateKey = index > 0 ? getRecordDateKey(records[index - 1].createdAt) : null;
+              const startsNewDateGroup = index === 0 || previousDateKey !== currentDateKey;
 
               return (
-                <button
-                  type="button"
-                  className={`record-item${startsNewDateGroup ? " record-item-date-separator" : ""}`}
-                  key={record.id}
-                  onClick={() => {
-                    if (window.matchMedia("(max-width: 1080px)").matches) {
-                      setIsSidebarOpen(false);
-                    }
-                    loadRecord(record.id).catch((err) =>
-                      pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
-                    );
-                  }}
-                >
-                  <div className="record-item-main">
-                    <div className="record-item-symbol-row">
-                      <strong>{record.symbol}</strong>
-                      <small className="record-item-id">#{record.id}</small>
+                <Fragment key={record.id}>
+                  {startsNewDateGroup ? (
+                    <div
+                      className={`record-date-divider${index === 0 ? " record-date-divider-first" : ""}`}
+                      role="separator"
+                      aria-label={`日期 ${currentDateKey}`}
+                    >
+                      <span>{currentDateKey}</span>
                     </div>
-                    <span className="record-item-sub">
-                      {record.analysisMode} · {record.debateRounds} 轮
-                    </span>
-                  </div>
-                  <div className="record-item-side">
-                    <em>{record.recommendation ?? "-"}</em>
-                    <small>{formatRecordTimestamp(record.createdAt)}</small>
-                  </div>
-                </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="record-item"
+                    onClick={() => {
+                      if (window.matchMedia("(max-width: 1080px)").matches) {
+                        setIsSidebarOpen(false);
+                      }
+                      loadRecord(record.id).catch((err) =>
+                        pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
+                      );
+                    }}
+                  >
+                    <div className="record-item-main">
+                      <div className="record-item-symbol-row">
+                        <strong>{record.symbol}</strong>
+                        <small className="record-item-id">#{record.id}</small>
+                      </div>
+                      <span className="record-item-sub">
+                        {record.analysisMode} · {record.debateRounds} 轮
+                      </span>
+                    </div>
+                    <div className="record-item-side">
+                      <em>{record.recommendation ?? "-"}</em>
+                      <small>{formatRecordTimestamp(record.createdAt)}</small>
+                    </div>
+                  </button>
+                </Fragment>
               );
             })}
             {!records.length ? <div className="empty-state">暂无记录</div> : null}
