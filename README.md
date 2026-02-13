@@ -91,6 +91,7 @@ npm run dev
 
 - 美股：`AAPL`
 - A 股：`688256` / `600519.SS` / `000001.SZ`
+- 主流加密货币：`BTC` / `ETH` / `SOL` / `XRP` / `DOGE`（自动映射到 `*-USD`，也支持 `BTCUSDT` / `ETHUSDT` 等常见写法）
 - 黄金：`GOLD` / `黄金`（映射到 `GC=F`，新闻/基本面代理符号 `GLD`）
 - 白银：`SILVER` / `白银`（映射到 `SI=F`，新闻/基本面代理符号 `SLV`）
 
