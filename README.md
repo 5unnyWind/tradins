@@ -44,6 +44,11 @@ TRADINS_LLM_MAX_RETRIES=2
 TRADINS_LLM_RETRY_BASE_MS=400
 TRADINS_LLM_RETRY_MAX_MS=5000
 
+# Scheduler 管理后台（/scheduler）
+SCHEDULER_ADMIN_PASSWORD=your_scheduler_password
+SCHEDULER_AUTH_SECRET=your_random_secret
+SCHEDULER_RUN_TOKEN=your_runner_token
+
 # Vercel Postgres（可选）
 # POSTGRES_URL=...
 # POSTGRES_PRISMA_URL=...
@@ -56,6 +61,18 @@ npm run dev
 ```
 
 访问 [http://localhost:3000](http://localhost:3000)。
+
+## 定时任务子页面
+
+- 路径：`/scheduler`
+- 默认要求密码登录（`SCHEDULER_ADMIN_PASSWORD`）
+- 支持：创建任务、启停任务、手动执行、删除任务、查看下一次执行时间和最近执行结果
+- 任务执行会复用现有多智能体分析流程，并写入分析记录
+
+可选配置自动触发（例如 Vercel Cron）：
+
+- `POST /api/scheduler/run`
+- 鉴权方式：`x-scheduler-token` 或 `Authorization: Bearer <SCHEDULER_RUN_TOKEN>`
 
 ## 你会在页面看到什么
 

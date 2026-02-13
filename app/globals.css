@@ -665,7 +665,195 @@ button.record-item:hover:not(:disabled) {
   padding: 1px 6px;
 }
 
+.scheduler-shell {
+  width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  margin: calc(16px + env(safe-area-inset-top)) auto calc(28px + env(safe-area-inset-bottom));
+  display: grid;
+  gap: 14px;
+}
+
+.scheduler-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.scheduler-head h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(30px, 3.8vw, 42px);
+  line-height: 1.05;
+}
+
+.scheduler-head p {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.scheduler-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.scheduler-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #2f4d67;
+  color: var(--ink);
+  text-decoration: none;
+  background: linear-gradient(132deg, #113147, #153850);
+  font-weight: 700;
+}
+
+.scheduler-link-button:hover {
+  filter: brightness(1.06);
+}
+
+.scheduler-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.scheduler-form {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.scheduler-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.scheduler-switch input {
+  width: 16px;
+  height: 16px;
+}
+
+.scheduler-login-panel {
+  width: min(480px, 100%);
+}
+
+.scheduler-login-form {
+  display: grid;
+  gap: 10px;
+}
+
+.scheduler-tasks {
+  min-width: 0;
+}
+
+.scheduler-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.scheduler-task-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.scheduler-task-card header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.scheduler-task-card h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.scheduler-task-meta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.scheduler-task-message {
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 10px;
+  border: 1px solid #2e455a;
+  background: rgba(17, 29, 41, 0.9);
+  font-size: 12px;
+  color: #b8c6d5;
+}
+
+.scheduler-task-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.scheduler-task-actions button {
+  min-height: 36px;
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.scheduler-danger {
+  background: linear-gradient(132deg, #7f1d1d, #991b1b);
+}
+
+.scheduler-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #36516b;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.scheduler-badge.is-on {
+  color: #4fe0cb;
+}
+
+.scheduler-badge.is-off {
+  color: #97a8bc;
+}
+
+.scheduler-muted {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
 @media (max-width: 1080px) {
+  .scheduler-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduler-head {
+    flex-direction: column;
+  }
+
+  .scheduler-head-actions {
+    width: 100%;
+  }
+
+  .scheduler-link-button,
+  .scheduler-head-actions button {
+    flex: 1 1 0;
+  }
+
   .quick-nav-dock {
     width: calc(100vw - 22px - env(safe-area-inset-left) - env(safe-area-inset-right));
   }
@@ -695,6 +883,24 @@ button.record-item:hover:not(:disabled) {
 }
 
 @media (max-width: 768px) {
+  .scheduler-shell {
+    width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    gap: 10px;
+  }
+
+  .scheduler-head h1 {
+    font-size: clamp(24px, 8vw, 34px);
+  }
+
+  .scheduler-task-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .scheduler-task-actions button {
+    min-height: 40px;
+  }
+
   .shell {
     --records-drawer-width: min(
       96vw,
@@ -852,6 +1058,14 @@ button.record-item:hover:not(:disabled) {
 }
 
 @media (max-width: 520px) {
+  .scheduler-shell {
+    width: min(100%, calc(100vw - 12px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+
+  .scheduler-task-actions {
+    grid-template-columns: 1fr;
+  }
+
   .shell {
     --records-drawer-width: min(
       96vw,

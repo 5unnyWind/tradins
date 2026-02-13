@@ -141,3 +141,45 @@ export interface AnalysisRecordMeta {
   recommendation: string | null;
   createdAt: string;
 }
+
+export type SchedulerRunStatus = "idle" | "success" | "failed";
+
+export interface SchedulerTask {
+  id: number;
+  name: string;
+  symbol: string;
+  analysisMode: AnalysisMode;
+  debateRounds: number;
+  period: string;
+  interval: string;
+  intervalMinutes: number;
+  enabled: boolean;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  lastRunStatus: SchedulerRunStatus;
+  lastRunMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SchedulerTaskCreateInput {
+  name: string;
+  symbol: string;
+  analysisMode: AnalysisMode;
+  debateRounds: number;
+  period: string;
+  interval: string;
+  intervalMinutes: number;
+  enabled: boolean;
+}
+
+export interface SchedulerTaskUpdateInput {
+  name?: string;
+  symbol?: string;
+  analysisMode?: AnalysisMode;
+  debateRounds?: number;
+  period?: string;
+  interval?: string;
+  intervalMinutes?: number;
+  enabled?: boolean;
+}
