@@ -123,6 +123,14 @@ type RecordsPageResponse = {
   nextCursor: number | null;
 };
 
+type RecordsApiResponse = {
+  ok?: boolean;
+  records?: AnalysisRecordMeta[];
+  storage?: "vercel_postgres" | "memory";
+  hasMore?: boolean;
+  nextCursor?: number | null;
+};
+
 type AnalyzeProgressPayload = {
   message?: string;
   step?: number;
@@ -477,6 +485,25 @@ export function AnalysisDashboard({
     if (nearBottom) loadMoreRecords();
   }
 
+  async function refreshLatestRecords(seed?: number): Promise<void> {
+    const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
+    const response = await fetch(`/api/records?limit=${RECORD_PAGE_SIZE}&_=${encodeURIComponent(nonce)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+    const raw = (await response.json()) as RecordsApiResponse;
+    const nextPage: RecordsPageResponse = {
+      records: Array.isArray(raw.records) ? raw.records : [],
+      storage: raw.storage === "memory" ? "memory" : "vercel_postgres",
+      hasMore: Boolean(raw.hasMore),
+      nextCursor: typeof raw.nextCursor === "number" && Number.isInteger(raw.nextCursor) ? raw.nextCursor : null,
+    };
+    await mutateRecords([nextPage], { revalidate: false });
+    await setSize(1);
+  }
+
   async function runAnalysis() {
     setIsAnalyzing(true);
     setStatusLog([]);
@@ -583,8 +610,13 @@ export function AnalysisDashboard({
       setStorageMode(finalStorage);
       pushStatusLine(`分析完成，记录 ID: ${finalRecordId}`);
 
-      await setSize(1);
-      await mutateRecords();
+      try {
+        await refreshLatestRecords(finalRecordId);
+      } catch (refreshError) {
+        pushStatusLine(`记录刷新失败，回退到默认刷新: ${refreshError instanceof Error ? refreshError.message : String(refreshError)}`);
+        await setSize(1);
+        await mutateRecords();
+      }
     } finally {
       setIsAnalyzing(false);
     }
