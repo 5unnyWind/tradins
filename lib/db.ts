@@ -93,12 +93,14 @@ export async function saveRecord(
   return { id: inserted.rows[0]?.id ?? 0, storage: "vercel_postgres" };
 }
 
-export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
+export async function listRecords(limit = 20, cursor: number | null = null): Promise<AnalysisRecordMeta[]> {
   const safeLimit = Math.max(1, Math.min(200, Math.floor(limit)));
+  const safeCursor = Number.isInteger(cursor) && (cursor as number) > 0 ? (cursor as number) : null;
 
   if (!hasVercelPostgres) {
     const records = await readLocalStore();
-    return records.map((r) => r.meta).slice(0, safeLimit);
+    const filtered = safeCursor ? records.filter((row) => row.meta.id < safeCursor) : records;
+    return filtered.map((r) => r.meta).slice(0, safeLimit);
   }
 
   await ensureTable();
@@ -121,39 +123,34 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
     createdAt: new Date(row.created_at).toISOString(),
   });
 
-  const fetchBatch = async (take: number, skip: number): Promise<DbRecordRow[]> => {
-    const rows = (await sql`
-      SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
-      FROM analysis_records
-      ORDER BY id DESC
-      LIMIT ${take}
-      OFFSET ${skip}
-    `) as { rows: DbRecordRow[] };
+  const fetchBatch = async (take: number, beforeId: number | null): Promise<DbRecordRow[]> => {
+    const rows = beforeId
+      ? ((await sql`
+          SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
+          FROM analysis_records
+          WHERE id < ${beforeId}
+          ORDER BY id DESC
+          LIMIT ${take}
+        `) as { rows: DbRecordRow[] })
+      : ((await sql`
+          SELECT id, symbol, analysis_mode, debate_rounds, recommendation, created_at
+          FROM analysis_records
+          ORDER BY id DESC
+          LIMIT ${take}
+        `) as { rows: DbRecordRow[] });
     return rows.rows;
-  };
-
-  // Single bulk query for the common path.
-  const firstBatch = await fetchBatch(Math.min(200, safeLimit), 0);
-  if (firstBatch.length >= safeLimit) {
-    return firstBatch.slice(0, safeLimit).map(mapMeta);
   }
 
-  // Some Vercel Postgres / Neon environments occasionally truncate multi-row scans.
-  // Page through with OFFSET and dedupe by id to reconstruct a stable result set.
   const seen = new Set<number>();
   const collected: AnalysisRecordMeta[] = [];
-  for (const row of firstBatch) {
-    if (seen.has(row.id)) continue;
-    seen.add(row.id);
-    collected.push(mapMeta(row));
-  }
-
   const pageSize = Math.min(50, safeLimit);
-  let offset = firstBatch.length;
+  let beforeId: number | null = safeCursor;
   let stagnantRounds = 0;
 
-  for (let round = 0; round < 12 && collected.length < safeLimit; round += 1) {
-    const page = await fetchBatch(pageSize, offset);
+  // Keyset pagination avoids large OFFSET scans and recovers from occasional partial pages.
+  for (let round = 0; round < 20 && collected.length < safeLimit; round += 1) {
+    const take = Math.min(pageSize, safeLimit - collected.length);
+    const page = await fetchBatch(take, beforeId);
     if (!page.length) break;
 
     let added = 0;
@@ -165,8 +162,9 @@ export async function listRecords(limit = 20): Promise<AnalysisRecordMeta[]> {
       if (collected.length >= safeLimit) break;
     }
 
-    offset += page.length;
-    if (page.length < pageSize) break;
+    const pageLastId = page[page.length - 1]?.id;
+    if (!Number.isInteger(pageLastId) || (beforeId !== null && pageLastId >= beforeId)) break;
+    beforeId = pageLastId;
 
     if (added === 0) {
       stagnantRounds += 1;

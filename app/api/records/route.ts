@@ -13,13 +13,12 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const parsedLimit = Number(url.searchParams.get("limit") ?? "30");
-    const limit = Number.isFinite(parsedLimit) ? parsedLimit : 30;
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(200, Math.floor(parsedLimit))) : 30;
     const parsedCursor = Number(url.searchParams.get("cursor") ?? "0");
     const cursor = Number.isInteger(parsedCursor) && parsedCursor > 0 ? parsedCursor : null;
-    const all = await listRecords(200);
-    const filtered = cursor ? all.filter((item) => item.id < cursor) : all;
-    const records = filtered.slice(0, limit);
-    const hasMore = filtered.length > records.length;
+    const fetched = await listRecords(limit + 1, cursor);
+    const records = fetched.slice(0, limit);
+    const hasMore = fetched.length > limit;
     const nextCursor = hasMore && records.length ? records[records.length - 1]?.id ?? null : null;
     return NextResponse.json(
       {
