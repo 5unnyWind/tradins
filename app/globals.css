@@ -84,7 +84,7 @@ h3 {
   max-height: calc(100vh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  z-index: 32;
+  z-index: 42;
   transform: translateX(calc(-100% - 18px));
   opacity: 0;
   pointer-events: none;
@@ -117,7 +117,7 @@ h3 {
   position: fixed;
   top: calc(88px + env(safe-area-inset-top));
   left: calc(10px + env(safe-area-inset-left));
-  z-index: 34;
+  z-index: 44;
   border: 1px solid #2d475d;
   border-radius: 999px;
   background: rgba(9, 15, 23, 0.94);
@@ -144,7 +144,7 @@ button.records-drawer-toggle:hover:not(:disabled) {
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 31;
+  z-index: 40;
   margin: 0;
   padding: 0;
   border: none;
