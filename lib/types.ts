@@ -244,3 +244,31 @@ export interface BacktestReport {
   equityCurve: BacktestEquityPoint[];
   trades: BacktestTrade[];
 }
+
+export interface ConclusionDriftPoint {
+  id: number;
+  symbol: string;
+  recommendation: InvestmentRecommendation | null;
+  confidence: number | null;
+  confidenceLevel: RecommendationCalibration["confidenceLevel"] | null;
+  createdAt: string;
+}
+
+export interface ConclusionDriftMetrics {
+  sampleCount: number;
+  changeCount: number;
+  buyCount: number;
+  holdCount: number;
+  reduceCount: number;
+  sellCount: number;
+  averageConfidence: number | null;
+  maxConfidence: number | null;
+  minConfidence: number | null;
+}
+
+export interface ConclusionDriftReport {
+  symbol: string;
+  limit: number;
+  metrics: ConclusionDriftMetrics;
+  points: ConclusionDriftPoint[];
+}

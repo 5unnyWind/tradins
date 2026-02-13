@@ -989,6 +989,9 @@ export function AnalysisDashboard({
                 <a className="hero-link-button" href="/backtest">
                   <span>回测模块</span>
                 </a>
+                <a className="hero-link-button" href="/drift">
+                  <span>漂移看板</span>
+                </a>
               </div>
               <div className="hero-flow">
                 <h2>数据流图</h2>

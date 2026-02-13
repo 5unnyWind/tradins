@@ -805,6 +805,12 @@ button.record-item:hover:not(:disabled) {
   gap: 12px;
 }
 
+.backtest-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .backtest-head h1 {
   margin: 8px 0 10px;
   font-size: clamp(30px, 3.8vw, 42px);
@@ -845,6 +851,115 @@ button.record-item:hover:not(:disabled) {
 
 .backtest-trade-item strong {
   color: var(--ink);
+}
+
+.drift-shell {
+  width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+}
+
+.drift-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drift-head h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(30px, 3.8vw, 42px);
+  line-height: 1.05;
+}
+
+.drift-head-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drift-muted {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.65;
+}
+
+.drift-form {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.drift-list {
+  display: grid;
+  gap: 8px;
+}
+
+.drift-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 5px;
+}
+
+.drift-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drift-recommendation {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #35516a;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drift-recommendation.is-buy {
+  color: #55e4cc;
+  border-color: rgba(45, 212, 191, 0.55);
+}
+
+.drift-recommendation.is-hold {
+  color: #84cfff;
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.drift-recommendation.is-reduce {
+  color: #fbbf8a;
+  border-color: rgba(251, 146, 60, 0.55);
+}
+
+.drift-recommendation.is-sell {
+  color: #fda4af;
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+.drift-recommendation.is-na {
+  color: #a7b7c9;
+}
+
+.drift-change-flag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #44627f;
+  background: rgba(27, 45, 62, 0.92);
+  color: #8ec9f4;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.drift-item-meta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .scheduler-shell {
@@ -1023,6 +1138,10 @@ button.record-item:hover:not(:disabled) {
     flex-direction: column;
   }
 
+  .drift-head {
+    flex-direction: column;
+  }
+
   .scheduler-layout {
     grid-template-columns: 1fr;
   }
@@ -1076,6 +1195,31 @@ button.record-item:hover:not(:disabled) {
 
   .backtest-head h1 {
     font-size: clamp(24px, 8vw, 34px);
+  }
+
+  .backtest-head-actions {
+    width: 100%;
+  }
+
+  .backtest-head-actions .hero-link-button {
+    flex: 1 1 0;
+  }
+
+  .drift-shell {
+    width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    gap: 10px;
+  }
+
+  .drift-head h1 {
+    font-size: clamp(24px, 8vw, 34px);
+  }
+
+  .drift-head-actions {
+    width: 100%;
+  }
+
+  .drift-head-actions .hero-link-button {
+    flex: 1 1 0;
   }
 
   .scheduler-shell {
@@ -1267,6 +1411,10 @@ button.record-item:hover:not(:disabled) {
 
 @media (max-width: 520px) {
   .backtest-shell {
+    width: min(100%, calc(100vw - 12px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+
+  .drift-shell {
     width: min(100%, calc(100vw - 12px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   }
 

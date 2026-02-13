@@ -1,5 +1,12 @@
 import { resolveFinalRecommendation } from "@/lib/engine";
-import type { AnalysisInput, AnalysisRecordMeta, AnalysisResult, BacktestSignal } from "@/lib/types";
+import type {
+  AnalysisInput,
+  AnalysisRecordMeta,
+  AnalysisResult,
+  BacktestSignal,
+  ConclusionDriftPoint,
+  RecommendationCalibration,
+} from "@/lib/types";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -234,6 +241,104 @@ export async function listBacktestSignals(
       recommendation: row.recommendation as BacktestSignal["recommendation"],
       createdAt: new Date(row.created_at).toISOString(),
     }));
+}
+
+function normalizeRecommendation(
+  value: unknown,
+): ConclusionDriftPoint["recommendation"] {
+  if (value === "买入" || value === "观望" || value === "减仓" || value === "卖出") {
+    return value;
+  }
+  return null;
+}
+
+function normalizeConfidenceLevel(
+  value: unknown,
+): RecommendationCalibration["confidenceLevel"] | null {
+  if (value === "high" || value === "medium" || value === "low") return value;
+  return null;
+}
+
+function toAnalysisResult(raw: unknown): AnalysisResult | null {
+  if (!raw) return null;
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw) as AnalysisResult;
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === "object") return raw as AnalysisResult;
+  return null;
+}
+
+export async function listConclusionDriftPoints(
+  symbol: string,
+  limit = 60,
+): Promise<ConclusionDriftPoint[]> {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  if (!normalizedSymbol) return [];
+  const safeLimit = Math.max(5, Math.min(300, Math.floor(limit)));
+
+  if (!hasVercelPostgres) {
+    const records = await readLocalStore();
+    return records
+      .filter((item) => item.meta.symbol.trim().toUpperCase() === normalizedSymbol)
+      .sort((left, right) => right.meta.id - left.meta.id)
+      .slice(0, safeLimit)
+      .map((item) => {
+        const calibration = item.result?.recommendationCalibration;
+        const confidence = Number(calibration?.confidence);
+        return {
+          id: item.meta.id,
+          symbol: item.meta.symbol,
+          recommendation: normalizeRecommendation(item.meta.recommendation ?? calibration?.finalRecommendation),
+          confidence: Number.isFinite(confidence) ? confidence : null,
+          confidenceLevel: normalizeConfidenceLevel(calibration?.confidenceLevel),
+          createdAt: item.meta.createdAt,
+        } satisfies ConclusionDriftPoint;
+      })
+      .sort((left, right) =>
+        new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id
+      );
+  }
+
+  await ensureTable();
+  const sql = await getSqlTag();
+  const rows = (await sql`
+    SELECT id, symbol, recommendation, created_at, result
+    FROM analysis_records
+    WHERE UPPER(symbol) = ${normalizedSymbol}
+    ORDER BY id DESC
+    LIMIT ${safeLimit}
+  `) as {
+    rows: Array<{
+      id: number;
+      symbol: string;
+      recommendation: string | null;
+      created_at: string;
+      result: unknown;
+    }>;
+  };
+
+  return rows.rows
+    .map((row) => {
+      const result = toAnalysisResult(row.result);
+      const calibration = result?.recommendationCalibration;
+      const confidence = Number(calibration?.confidence);
+      return {
+        id: row.id,
+        symbol: row.symbol,
+        recommendation: normalizeRecommendation(row.recommendation ?? calibration?.finalRecommendation),
+        confidence: Number.isFinite(confidence) ? confidence : null,
+        confidenceLevel: normalizeConfidenceLevel(calibration?.confidenceLevel),
+        createdAt: new Date(row.created_at).toISOString(),
+      } satisfies ConclusionDriftPoint;
+    })
+    .sort((left, right) =>
+      new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime() || left.id - right.id
+    );
 }
 
 export async function getRecord(

@@ -92,9 +92,14 @@ export function BacktestDashboard() {
             将历史分析建议映射为仓位规则：买入=100%，减仓=50%，观望/卖出=0%，输出胜率、最大回撤、夏普等指标。
           </p>
         </div>
-        <a className="hero-link-button" href="/">
-          返回分析页
-        </a>
+        <div className="backtest-head-actions">
+          <a className="hero-link-button" href="/">
+            返回分析页
+          </a>
+          <a className="hero-link-button" href="/drift">
+            漂移看板
+          </a>
+        </div>
       </section>
 
       <form className="panel backtest-form" onSubmit={runBacktest}>
