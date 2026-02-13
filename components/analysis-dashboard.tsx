@@ -579,52 +579,6 @@ export function AnalysisDashboard({
             </form>
           </section>
 
-          <section className="panel quick-nav">
-            <div className="panel-header">
-              <h2>快速定位</h2>
-              <span>{quickJumpTargets.length} 个锚点</span>
-            </div>
-            <label className="quick-nav-select-wrap">
-              <span>快速跳转</span>
-              <select
-                defaultValue=""
-                aria-label="快速跳转到分析区块"
-                onChange={(e) => {
-                  const targetId = e.target.value;
-                  if (!targetId) return;
-                  jumpToSection(targetId);
-                  e.currentTarget.value = "";
-                }}
-              >
-                <option value="">选择目标区块...</option>
-                {quickJumpTargets.map((target) => (
-                  <option key={target.id} value={target.id}>
-                    {target.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="quick-nav-list" role="navigation" aria-label="分析区块目录">
-              {quickJumpTargets.map((target) => (
-                <button
-                  key={target.id}
-                  type="button"
-                  className="quick-nav-btn"
-                  onClick={() => jumpToSection(target.id)}
-                >
-                  {target.label}
-                </button>
-              ))}
-              <button
-                type="button"
-                className="quick-nav-btn quick-nav-top"
-                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-              >
-                回到顶部
-              </button>
-            </div>
-          </section>
-
           <section className="panel anchor-target" id="section-flow">
             <h2>数据流图</h2>
             {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
@@ -758,6 +712,28 @@ export function AnalysisDashboard({
           ) : null}
         </div>
       </div>
+
+      <nav className="quick-nav-dock" role="navigation" aria-label="分析区块快速定位">
+        <div className="quick-nav-rail">
+          {quickJumpTargets.map((target) => (
+            <button
+              key={target.id}
+              type="button"
+              className="quick-nav-pill"
+              onClick={() => jumpToSection(target.id)}
+            >
+              {target.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="quick-nav-pill quick-nav-pill-top"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            回到顶部
+          </button>
+        </div>
+      </nav>
     </main>
   );
 }
