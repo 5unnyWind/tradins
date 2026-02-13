@@ -109,24 +109,8 @@ async function collectStageBundle(
   return { market, fundamentals, news, social };
 }
 
-function recommendationOrUnknown(markdown: string): string {
-  return extractRecommendation(markdown) ?? "未明确";
-}
-
-function decorateJudgeRecommendation(markdown: string, recommendation: string): string {
-  const body = markdown.trim();
-  return `## 最终投资建议（开头）
-- 建议: \`${recommendation}\`
-
-${body}
-
-## 最终投资建议（末尾）
-- 建议: \`${recommendation}\``;
-}
-
 function renderFinalMarkdown(input: AnalysisInput, result: Omit<AnalysisResult, "finalReport">): string {
   const generatedAt = new Date().toISOString();
-  const finalRecommendation = recommendationOrUnknown(result.riskReports.judge);
   const debateText = result.debates
     .map(
       (d) =>
@@ -140,9 +124,6 @@ function renderFinalMarkdown(input: AnalysisInput, result: Omit<AnalysisResult, 
 - 模式: \`${input.analysisMode}\`
 - 辩论轮次: \`${input.debateRounds}\`
 - 生成时间(UTC): \`${generatedAt}\`
-
-## 最终投资建议（开头）
-- 建议: \`${finalRecommendation}\`
 
 ## 数据流图
 \`\`\`mermaid
@@ -180,9 +161,6 @@ ${result.riskReports.neutral}
 
 ## 风控法官最终裁定
 ${result.riskReports.judge}
-
-## 最终投资建议（末尾）
-- 建议: \`${finalRecommendation}\`
 `;
 }
 
@@ -345,7 +323,7 @@ export async function runTradinsAnalysis(
 
   await nextProgress("risk-judge", "风控法官生成最终裁定");
   const rawJudge = await riskJudge(input.symbol, preliminaryPlan, risky, safe, neutral, context);
-  const judge = decorateJudgeRecommendation(rawJudge, recommendationOrUnknown(rawJudge));
+  const judge = rawJudge;
   await emitArtifact(onEvent, {
     artifactType: "risk",
     side: "judge",
