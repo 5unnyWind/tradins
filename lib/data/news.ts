@@ -1,5 +1,6 @@
 import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { sentimentLabel, sentimentScore, topKeywords } from "@/lib/data/common";
+import { resolveInstrumentContext } from "@/lib/instruments";
 import type { NewsItem, NewsSnapshot } from "@/lib/types";
 
 function toISO(ts: unknown): string | null {
@@ -96,11 +97,14 @@ async function fetchAShareAnnouncementNews(symbol: string, limit: number): Promi
 }
 
 export async function fetchNewsSnapshot(symbol: string, limit = 12): Promise<NewsSnapshot> {
-  const aShareNews = await fetchAShareAnnouncementNews(symbol, limit);
+  const instrument = resolveInstrumentContext(symbol);
+  const sourceSymbol = instrument.newsSymbol;
+
+  const aShareNews = await fetchAShareAnnouncementNews(sourceSymbol, limit);
   if (aShareNews) return aShareNews;
 
   const endpoint = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
-    symbol,
+    sourceSymbol,
   )}&newsCount=${Math.max(1, limit)}&quotesCount=0`;
   const response = await fetch(endpoint, {
     headers: { "User-Agent": "tradins-next/0.1" },

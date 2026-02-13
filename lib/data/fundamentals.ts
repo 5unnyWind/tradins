@@ -1,5 +1,6 @@
 import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { toFiniteNumber } from "@/lib/data/common";
+import { resolveInstrumentContext } from "@/lib/instruments";
 import type { FundamentalsSnapshot } from "@/lib/types";
 
 const REQUEST_HEADERS = { "User-Agent": "tradins-next/0.1" } as const;
@@ -484,6 +485,7 @@ async function fetchAShareFundamentalSnapshot(symbol: string): Promise<Fundament
 
 function toFallbackSnapshot(
   symbol: string,
+  lookupSymbol: string,
   quoteSummaryStatus: number,
   quoteSummaryReason: string | null,
   timeseriesRes: JsonFetchResult,
@@ -494,7 +496,7 @@ function toFallbackSnapshot(
   const series = parseTimeseriesMap(timeseriesRes.data);
   const chartMeta = asRecord(firstArrayItem(asRecord(asRecord(chartRes.data).chart).result)).meta;
   const chart = asRecord(chartMeta);
-  const searchQuote = findSearchQuote(searchRes.data, symbol);
+  const searchQuote = findSearchQuote(searchRes.data, lookupSymbol);
   const insights = asRecord(asRecord(insightsRes.data).finance).result;
   const insightsResult = asRecord(insights);
   const recommendation = asRecord(asRecord(insightsResult.instrumentInfo).recommendation);
@@ -652,7 +654,9 @@ function toFallbackSnapshot(
 }
 
 export async function fetchFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot> {
-  const aShareSnapshot = await fetchAShareFundamentalSnapshot(symbol);
+  const instrument = resolveInstrumentContext(symbol);
+  const lookupSymbol = instrument.fundamentalsSymbol;
+  const aShareSnapshot = await fetchAShareFundamentalSnapshot(lookupSymbol);
   if (aShareSnapshot && hasAnySignal(aShareSnapshot)) return aShareSnapshot;
 
   const modules = [
@@ -665,25 +669,38 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     "assetProfile",
   ].join(",");
   const endpoint = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
-    symbol,
+    lookupSymbol,
   )}?modules=${encodeURIComponent(modules)}`;
 
   const primary = await fetchJson(endpoint);
   const primaryReason = parseYahooError(primary.data);
   if (primary.ok) {
     const parsed = fromQuoteSummary(symbol, primary.data);
-    if (parsed) return parsed;
+    if (parsed) {
+      if (lookupSymbol !== symbol) {
+        parsed.statements = {
+          ...parsed.statements,
+          instrument: {
+            kind: instrument.kind,
+            displayName: instrument.displayName,
+            requestedSymbol: symbol,
+            dataSymbol: lookupSymbol,
+          },
+        };
+      }
+      return parsed;
+    }
   }
 
   const now = Math.floor(Date.now() / 1000);
   const period1 = now - 3600 * 24 * 365 * 10;
   const timeseriesEndpoint = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
-    symbol,
+    lookupSymbol,
   )}?type=${encodeURIComponent(TIMESERIES_TYPES.join(","))}&period1=${period1}&period2=${now}`;
-  const chartEndpoint = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-  const searchEndpoint = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}`;
+  const chartEndpoint = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupSymbol)}`;
+  const searchEndpoint = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(lookupSymbol)}`;
   const insightsEndpoint = `https://query2.finance.yahoo.com/ws/insights/v1/finance/insights?symbol=${encodeURIComponent(
-    symbol,
+    lookupSymbol,
   )}`;
 
   const [timeseriesRes, chartRes, searchRes, insightsRes] = await Promise.all([
@@ -695,6 +712,7 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
 
   const fallback = toFallbackSnapshot(
     symbol,
+    lookupSymbol,
     primary.status,
     primaryReason,
     timeseriesRes,
@@ -702,6 +720,18 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     searchRes,
     insightsRes,
   );
+
+  if (lookupSymbol !== symbol) {
+    fallback.statements = {
+      ...fallback.statements,
+      instrument: {
+        kind: instrument.kind,
+        displayName: instrument.displayName,
+        requestedSymbol: symbol,
+        dataSymbol: lookupSymbol,
+      },
+    };
+  }
 
   if (hasAnySignal(fallback)) return fallback;
   return emptySnapshot(symbol, fallback.error ?? `Fundamentals API error: ${primary.status || 0}`);

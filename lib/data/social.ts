@@ -1,5 +1,6 @@
 import { sentimentLabel, sentimentScore, topKeywords } from "@/lib/data/common";
 import { resolveAShareSymbol } from "@/lib/data/a-share";
+import { resolveInstrumentContext } from "@/lib/instruments";
 import type { SocialItem, SocialSnapshot } from "@/lib/types";
 
 const HEADERS: Record<string, string> = {
@@ -164,14 +165,16 @@ function sortAndPick(items: SocialItem[], limit: number): SocialItem[] {
 }
 
 export async function fetchSocialSnapshot(symbol: string, limit = 30): Promise<SocialSnapshot> {
+  const instrument = resolveInstrumentContext(symbol);
+  const sourceSymbol = instrument.socialSymbol;
   const half = Math.max(5, Math.floor(limit / 2));
   const errors: string[] = [];
-  const ashare = resolveAShareSymbol(symbol);
+  const ashare = resolveAShareSymbol(sourceSymbol);
   const tasks = ashare
-    ? [{ source: "eastmoney-guba" as const, task: fetchAshareGuba(symbol, limit) }]
+    ? [{ source: "eastmoney-guba" as const, task: fetchAshareGuba(sourceSymbol, limit) }]
     : [
-        { source: "reddit" as const, task: fetchReddit(symbol, half) },
-        { source: "stocktwits" as const, task: fetchStocktwits(symbol, half) },
+        { source: "reddit" as const, task: fetchReddit(sourceSymbol, half) },
+        { source: "stocktwits" as const, task: fetchStocktwits(sourceSymbol, half) },
       ];
 
   const settled = await Promise.allSettled(tasks.map((item) => item.task));

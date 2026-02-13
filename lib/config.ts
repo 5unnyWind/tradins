@@ -1,4 +1,5 @@
 import type { AnalysisInput, AnalysisMode } from "@/lib/types";
+import { normalizeTradableSymbol } from "@/lib/instruments";
 
 export interface LLMRuntimeConfig {
   baseUrl: string;
@@ -43,7 +44,7 @@ export function getLLMConfig(): LLMRuntimeConfig {
 }
 
 export function normalizeAnalysisInput(raw: Partial<AnalysisInput>): AnalysisInput {
-  const symbol = (raw.symbol ?? "AAPL").trim().toUpperCase();
+  const symbol = normalizeTradableSymbol(raw.symbol ?? "AAPL");
   const analysisMode = ((raw.analysisMode ?? "standard") as AnalysisMode).toLowerCase() as AnalysisMode;
   const modeRounds: Record<AnalysisMode, number> = {
     quick: 1,
