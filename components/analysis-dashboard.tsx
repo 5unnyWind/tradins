@@ -356,7 +356,7 @@ export function AnalysisDashboard({
     fetcher,
     {
       fallbackData: [initialPage],
-      revalidateFirstPage: false,
+      revalidateFirstPage: true,
       revalidateOnFocus: false,
     },
   );
