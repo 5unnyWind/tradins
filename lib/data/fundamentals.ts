@@ -285,6 +285,7 @@ function fromQuoteSummary(symbol: string, payload: unknown): FundamentalsSnapsho
   const summaryDetail = asRecord(result.summaryDetail);
   const financialData = asRecord(result.financialData);
   const stats = asRecord(result.defaultKeyStatistics);
+  const assetProfile = asRecord(result.assetProfile);
   const income = asRecord(result.incomeStatementHistory);
   const balance = asRecord(result.balanceSheetHistory);
 
@@ -322,6 +323,17 @@ function fromQuoteSummary(symbol: string, payload: unknown): FundamentalsSnapsho
       freeCashflow: rawNum(financialData.freeCashflow),
     },
     statements: {
+      source: "yahoo-quote-summary",
+      profile: {
+        shortName: asString(price.shortName),
+        longName: asString(price.longName),
+        sector: asString(assetProfile.sector),
+        industry: asString(assetProfile.industry),
+        exchange: asString(price.exchangeName),
+        currency: asString(price.currency),
+        description: asString(assetProfile.longBusinessSummary),
+        website: asString(assetProfile.website),
+      },
       incomeStatementHistory: income,
       balanceSheetHistory: balance,
     },
@@ -650,6 +662,7 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     "defaultKeyStatistics",
     "incomeStatementHistory",
     "balanceSheetHistory",
+    "assetProfile",
   ].join(",");
   const endpoint = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
     symbol,

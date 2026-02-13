@@ -40,6 +40,57 @@ function fmtPct(value: unknown): string {
   return `${v.toFixed(2)}%`;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object") return value as Record<string, unknown>;
+  return {};
+}
+
+function asText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function firstText(...values: unknown[]): string | null {
+  for (const value of values) {
+    const text = asText(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function shorten(text: string, maxLength = 220): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength).trimEnd()}...`;
+}
+
+function buildStockIntro(result: AnalysisResult): string {
+  const profile = asRecord(asRecord(result.stageBundle.fundamentals.statements).profile);
+  const symbolLabel = firstText(profile.securityCode, profile.secuCode, result.symbol) ?? result.symbol;
+  const displayName = firstText(profile.securityName, profile.longName, profile.shortName);
+  const description = firstText(profile.description, profile.longBusinessSummary);
+  const industry = firstText(profile.industry);
+  const sector = firstText(profile.sector);
+  const exchange = firstText(profile.exchange);
+  const currency = firstText(profile.currency);
+  const trend = firstText(result.stageBundle.market.technicals.trend);
+
+  const subject = displayName ? `${displayName}（${symbolLabel}）` : symbolLabel;
+  if (description) return `${subject}：${shorten(description)}`;
+
+  const details: string[] = [];
+  if (sector) details.push(`所属板块为${sector}`);
+  if (industry && industry !== sector) details.push(`所属行业为${industry}`);
+  if (exchange) details.push(`交易市场为${exchange}`);
+  if (currency) details.push(`计价货币为${currency}`);
+  if (trend) details.push(`当前技术趋势为${trend}`);
+
+  if (!details.length) {
+    return `${subject} 的市场快照已加载，可结合下方指标和价格图进行研判。`;
+  }
+  return `${subject}，${details.join("，")}。`;
+}
+
 interface DashboardProps {
   initialRecords: AnalysisRecordMeta[];
   initialStorageMode: "vercel_postgres" | "memory";
@@ -241,6 +292,11 @@ export function AnalysisDashboard({
       labels: entries.map(([k]) => k),
       values: entries.map(([, v]) => Number(v.Close ?? 0)),
     };
+  }, [result]);
+
+  const stockIntro = useMemo(() => {
+    if (!result) return null;
+    return buildStockIntro(result);
   }, [result]);
 
   const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
@@ -613,6 +669,12 @@ export function AnalysisDashboard({
               <section className="grid cols-2">
                 <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
+                  {stockIntro ? (
+                    <div className="stock-intro">
+                      <h3>股票简介</h3>
+                      <p>{stockIntro}</p>
+                    </div>
+                  ) : null}
                   <div className="metric-grid">
                     <div className="metric">
                       <span>现价</span>

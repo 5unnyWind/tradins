@@ -483,6 +483,27 @@ button.quick-nav-pill:hover:not(:disabled) {
   overflow: auto;
 }
 
+.stock-intro {
+  margin: 10px 0 12px;
+  border: 1px solid #2a435a;
+  border-radius: 12px;
+  background: linear-gradient(150deg, rgba(16, 30, 44, 0.9), rgba(11, 20, 32, 0.92));
+  padding: 10px 12px;
+}
+
+.stock-intro h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.stock-intro p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--ink-soft);
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -740,6 +761,11 @@ button.quick-nav-pill:hover:not(:disabled) {
 
   .metric strong {
     font-size: 17px;
+  }
+
+  .stock-intro p {
+    font-size: 12px;
+    line-height: 1.6;
   }
 
   .chart-wrap {
