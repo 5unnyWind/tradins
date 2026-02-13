@@ -133,17 +133,115 @@ type ParsedSseFrame = {
   data: unknown;
 };
 
-type StreamArtifactItem = {
-  id: string;
-  title: string;
+type AnalystArtifactKey = "market" | "fundamentals" | "news" | "social";
+
+type RiskArtifactSide = "risky" | "safe" | "neutral" | "judge";
+
+type StreamDebateState = {
+  bullMarkdown?: string;
+  bearMarkdown?: string;
+};
+
+type StreamCardsState = {
+  analystReports: Partial<Record<AnalystArtifactKey, string>>;
+  preliminaryPlan: string | null;
+  riskReports: Partial<Record<RiskArtifactSide, string>>;
+  debates: Record<number, StreamDebateState>;
+};
+
+type StreamDebateTurn = {
+  roundId: number;
+  bullMarkdown?: string;
+  bearMarkdown?: string;
+};
+
+type RenderDebateTurn = {
+  roundId: number;
+  bullMarkdown?: string;
+  bearMarkdown?: string;
+};
+
+type ArtifactUpdatePayload = {
+  artifactType: ArtifactType;
   markdown: string;
-  meta: string;
+  key?: AnalyzeArtifactPayload["key"];
+  roundId?: number;
+  side?: AnalyzeArtifactPayload["side"];
 };
 
 type QuickJumpTarget = {
   id: string;
   label: string;
 };
+
+function createEmptyStreamCardsState(): StreamCardsState {
+  return {
+    analystReports: {},
+    preliminaryPlan: null,
+    riskReports: {},
+    debates: {},
+  };
+}
+
+function toArtifactUpdate(data: unknown): ArtifactUpdatePayload | null {
+  if (!data || typeof data !== "object") return null;
+  const payload = data as AnalyzeArtifactPayload;
+  if (!payload.markdown || typeof payload.markdown !== "string") return null;
+  if (!payload.artifactType) return null;
+  const markdown = payload.markdown.trim();
+  if (!markdown) return null;
+  return {
+    artifactType: payload.artifactType,
+    markdown,
+    key: payload.key,
+    roundId: payload.roundId,
+    side: payload.side,
+  };
+}
+
+function applyArtifactUpdate(prev: StreamCardsState, payload: ArtifactUpdatePayload): StreamCardsState {
+  const next: StreamCardsState = {
+    analystReports: { ...prev.analystReports },
+    preliminaryPlan: prev.preliminaryPlan,
+    riskReports: { ...prev.riskReports },
+    debates: { ...prev.debates },
+  };
+
+  if (payload.artifactType === "analyst") {
+    const key = payload.key;
+    if (key === "market" || key === "fundamentals" || key === "news" || key === "social") {
+      next.analystReports[key] = payload.markdown;
+    }
+    return next;
+  }
+
+  if (payload.artifactType === "plan") {
+    next.preliminaryPlan = payload.markdown;
+    return next;
+  }
+
+  if (payload.artifactType === "risk") {
+    const side = payload.side;
+    if (side === "risky" || side === "safe" || side === "neutral" || side === "judge") {
+      next.riskReports[side] = payload.markdown;
+    }
+    return next;
+  }
+
+  if (payload.artifactType === "debate") {
+    const roundId = Number(payload.roundId);
+    if (!Number.isInteger(roundId) || roundId <= 0) return next;
+    const current = next.debates[roundId] ?? {};
+    if (payload.side === "bull") {
+      next.debates[roundId] = { ...current, bullMarkdown: payload.markdown };
+    } else if (payload.side === "bear") {
+      next.debates[roundId] = { ...current, bearMarkdown: payload.markdown };
+    }
+    return next;
+  }
+
+  return next;
+}
 
 function parseSseFrame(frame: string): ParsedSseFrame | null {
   const lines = frame.split("\n");
@@ -181,50 +279,6 @@ function toProgressText(data: unknown): string | null {
   return payload.message;
 }
 
-function toArtifactItem(data: unknown): StreamArtifactItem | null {
-  if (!data || typeof data !== "object") return null;
-  const payload = data as AnalyzeArtifactPayload;
-  if (!payload.markdown || typeof payload.markdown !== "string") return null;
-  const markdown = payload.markdown.trim();
-  if (!markdown) return null;
-
-  const title = typeof payload.title === "string" && payload.title.trim()
-    ? payload.title.trim()
-    : "实时产物";
-
-  const metaParts: string[] = [];
-  if (typeof payload.artifactType === "string") {
-    const labelMap: Record<ArtifactType, string> = {
-      analyst: "分析师",
-      debate: "辩论",
-      plan: "交易计划",
-      risk: "风控",
-    };
-    metaParts.push(labelMap[payload.artifactType] ?? payload.artifactType);
-  }
-  if (Number.isInteger(payload.roundId) && Number(payload.roundId) > 0) {
-    metaParts.push(`第 ${payload.roundId} 轮`);
-  }
-  if (typeof payload.side === "string") {
-    const sideMap: Record<NonNullable<AnalyzeArtifactPayload["side"]>, string> = {
-      bull: "多头",
-      bear: "空头",
-      risky: "激进派",
-      safe: "保守派",
-      neutral: "中立派",
-      judge: "法官",
-    };
-    metaParts.push(sideMap[payload.side] ?? payload.side);
-  }
-
-  return {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-    title,
-    markdown,
-    meta: metaParts.join(" · "),
-  };
-}
-
 async function readErrorMessage(response: Response): Promise<string> {
   const raw = await response.text();
   if (!raw) return `HTTP ${response.status}`;
@@ -248,7 +302,7 @@ export function AnalysisDashboard({
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [status, setStatus] = useState("");
   const [statusLog, setStatusLog] = useState<string[]>([]);
-  const [streamArtifacts, setStreamArtifacts] = useState<StreamArtifactItem[]>([]);
+  const [streamCards, setStreamCards] = useState<StreamCardsState>(() => createEmptyStreamCardsState());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
@@ -299,19 +353,79 @@ export function AnalysisDashboard({
     return buildStockIntro(result);
   }, [result]);
 
+  const streamDebates = useMemo<StreamDebateTurn[]>(() => {
+    return Object.entries(streamCards.debates)
+      .map(([round, value]) => ({
+        roundId: Number(round),
+        bullMarkdown: value.bullMarkdown,
+        bearMarkdown: value.bearMarkdown,
+      }))
+      .filter((turn) => Number.isInteger(turn.roundId) && turn.roundId > 0)
+      .sort((a, b) => a.roundId - b.roundId);
+  }, [streamCards.debates]);
+
+  const displayedDebates = useMemo<RenderDebateTurn[]>(() => {
+    if (result) {
+      return result.debates.map((turn) => ({
+        roundId: turn.roundId,
+        bullMarkdown: turn.bullMarkdown,
+        bearMarkdown: turn.bearMarkdown,
+      }));
+    }
+    return streamDebates;
+  }, [result, streamDebates]);
+
+  const marketReportMarkdown = result?.analystReports.market.markdown ?? streamCards.analystReports.market ?? "";
+  const fundamentalsReportMarkdown =
+    result?.analystReports.fundamentals.markdown ?? streamCards.analystReports.fundamentals ?? "";
+  const newsReportMarkdown = result?.analystReports.news.markdown ?? streamCards.analystReports.news ?? "";
+  const socialReportMarkdown = result?.analystReports.social.markdown ?? streamCards.analystReports.social ?? "";
+  const preliminaryPlanMarkdown = result?.preliminaryPlan ?? streamCards.preliminaryPlan ?? "";
+  const riskyMarkdown = result?.riskReports.risky ?? streamCards.riskReports.risky ?? "";
+  const safeMarkdown = result?.riskReports.safe ?? streamCards.riskReports.safe ?? "";
+  const neutralMarkdown = result?.riskReports.neutral ?? streamCards.riskReports.neutral ?? "";
+  const judgeMarkdown = result?.riskReports.judge ?? streamCards.riskReports.judge ?? "";
+
+  const streamHasContent = useMemo(() => {
+    return Boolean(
+      marketReportMarkdown ||
+      fundamentalsReportMarkdown ||
+      newsReportMarkdown ||
+      socialReportMarkdown ||
+      preliminaryPlanMarkdown ||
+      riskyMarkdown ||
+      safeMarkdown ||
+      neutralMarkdown ||
+      judgeMarkdown ||
+      displayedDebates.length,
+    );
+  }, [
+    marketReportMarkdown,
+    fundamentalsReportMarkdown,
+    newsReportMarkdown,
+    socialReportMarkdown,
+    preliminaryPlanMarkdown,
+    riskyMarkdown,
+    safeMarkdown,
+    neutralMarkdown,
+    judgeMarkdown,
+    displayedDebates.length,
+  ]);
+
+  const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
+
   const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
     const targets: QuickJumpTarget[] = [
       { id: "section-flow", label: "数据流图" },
-      { id: "section-stream", label: "实时分析产物" },
     ];
-    if (!result) return targets;
+    if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
       { id: "section-preliminary-plan", label: "交易计划" },
       { id: "section-analysts", label: "四位分析师" },
       { id: "section-debates", label: "多空辩论" },
     );
-    for (const turn of result.debates) {
+    for (const turn of displayedDebates) {
       targets.push({
         id: `section-debate-round-${turn.roundId}`,
         label: `第 ${turn.roundId} 轮辩论`,
@@ -319,7 +433,7 @@ export function AnalysisDashboard({
     }
     targets.push({ id: "section-risk", label: "风控内阁" });
     return targets;
-  }, [result]);
+  }, [showAnalysisPanels, displayedDebates]);
 
   function pushStatusLine(line: string) {
     setStatus(line);
@@ -349,7 +463,8 @@ export function AnalysisDashboard({
   async function runAnalysis() {
     setIsAnalyzing(true);
     setStatusLog([]);
-    setStreamArtifacts([]);
+    setStreamCards(createEmptyStreamCardsState());
+    setResult(null);
     pushStatusLine("正在建立流式连接...");
 
     const payload: Record<string, unknown> = {
@@ -389,9 +504,9 @@ export function AnalysisDashboard({
         }
 
         if (parsed.event === "artifact") {
-          const artifact = toArtifactItem(parsed.data);
+          const artifact = toArtifactUpdate(parsed.data);
           if (artifact) {
-            setStreamArtifacts((prev) => [artifact, ...prev].slice(0, 30));
+            setStreamCards((prev) => applyArtifactUpdate(prev, artifact));
           }
           return null;
         }
@@ -460,6 +575,7 @@ export function AnalysisDashboard({
 
   async function loadRecord(id: number) {
     pushStatusLine(`正在加载记录 #${id} ...`);
+    setStreamCards(createEmptyStreamCardsState());
     const response = await fetch(`/api/records/${id}`, { cache: "no-store" });
     const json = await response.json();
     if (!response.ok || !json.ok) {
@@ -640,65 +756,57 @@ export function AnalysisDashboard({
             {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
           </section>
 
-          <section className="panel anchor-target" id="section-stream">
-            <div className="panel-header">
-              <h2>实时分析产物</h2>
-              <span>{streamArtifacts.length ? `${streamArtifacts.length} 条` : "等待产物"}</span>
-            </div>
-            <div className="artifact-stream-list">
-              {streamArtifacts.length ? (
-                streamArtifacts.map((item) => (
-                  <article className="artifact-stream-item" key={item.id}>
-                    <div className="artifact-stream-head">
-                      <strong>{item.title}</strong>
-                      <span>{item.meta || "实时输出"}</span>
-                    </div>
-                    <MarkdownView markdown={item.markdown} />
-                  </article>
-                ))
-              ) : (
-                <div className="empty-state">
-                  {isAnalyzing ? "分析进行中，产物会实时显示在这里" : "开始分析后，这里会显示每一轮产物"}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {result ? (
+          {showAnalysisPanels ? (
             <>
               <section className="grid cols-2">
                 <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
-                  {stockIntro ? (
-                    <div className="stock-intro">
-                      <h3>股票简介</h3>
-                      <p>{stockIntro}</p>
+                  {result ? (
+                    <>
+                      {stockIntro ? (
+                        <div className="stock-intro">
+                          <h3>股票简介</h3>
+                          <p>{stockIntro}</p>
+                        </div>
+                      ) : null}
+                      <div className="metric-grid">
+                        <div className="metric">
+                          <span>现价</span>
+                          <strong>{fmtNum(result.stageBundle.market.technicals.price)}</strong>
+                        </div>
+                        <div className="metric">
+                          <span>1日涨跌</span>
+                          <strong>{fmtPct(result.stageBundle.market.technicals.changePct1d)}</strong>
+                        </div>
+                        <div className="metric">
+                          <span>RSI14</span>
+                          <strong>{fmtNum(result.stageBundle.market.technicals.rsi14)}</strong>
+                        </div>
+                        <div className="metric">
+                          <span>量比20d</span>
+                          <strong>{fmtNum(result.stageBundle.market.technicals.volumeRatio20d)}</strong>
+                        </div>
+                      </div>
+                      <PriceChart labels={chartData.labels} values={chartData.values} />
+                    </>
+                  ) : (
+                    <div className="empty-state">
+                      {isAnalyzing
+                        ? `${symbol.trim().toUpperCase() || "当前股票"} 市场数据采集中，完成后会展示指标与价格图。`
+                        : "先运行一次分析"}
                     </div>
-                  ) : null}
-                  <div className="metric-grid">
-                    <div className="metric">
-                      <span>现价</span>
-                      <strong>{fmtNum(result.stageBundle.market.technicals.price)}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>1日涨跌</span>
-                      <strong>{fmtPct(result.stageBundle.market.technicals.changePct1d)}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>RSI14</span>
-                      <strong>{fmtNum(result.stageBundle.market.technicals.rsi14)}</strong>
-                    </div>
-                    <div className="metric">
-                      <span>量比20d</span>
-                      <strong>{fmtNum(result.stageBundle.market.technicals.volumeRatio20d)}</strong>
-                    </div>
-                  </div>
-                  <PriceChart labels={chartData.labels} values={chartData.values} />
+                  )}
                 </article>
 
                 <article className="panel anchor-target" id="section-preliminary-plan">
                   <h2>研究主管初步交易计划</h2>
-                  <MarkdownView markdown={result.preliminaryPlan} />
+                  {preliminaryPlanMarkdown ? (
+                    <MarkdownView markdown={preliminaryPlanMarkdown} />
+                  ) : (
+                    <div className="empty-state">
+                      {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
+                    </div>
+                  )}
                 </article>
               </section>
 
@@ -707,46 +815,74 @@ export function AnalysisDashboard({
                 <div className="card-grid">
                   <div className="card">
                     <h3>📈 市场分析师</h3>
-                    <MarkdownView markdown={result.analystReports.market.markdown} />
+                    {marketReportMarkdown ? (
+                      <MarkdownView markdown={marketReportMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "市场分析师正在生成中..." : "等待内容"}</div>
+                    )}
                   </div>
                   <div className="card">
                     <h3>📊 基本面分析师</h3>
-                    <MarkdownView markdown={result.analystReports.fundamentals.markdown} />
+                    {fundamentalsReportMarkdown ? (
+                      <MarkdownView markdown={fundamentalsReportMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "基本面分析师正在生成中..." : "等待内容"}</div>
+                    )}
                   </div>
                   <div className="card">
                     <h3>📰 新闻分析师</h3>
-                    <MarkdownView markdown={result.analystReports.news.markdown} />
+                    {newsReportMarkdown ? (
+                      <MarkdownView markdown={newsReportMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "新闻分析师正在生成中..." : "等待内容"}</div>
+                    )}
                   </div>
                   <div className="card">
                     <h3>🗣️ 舆情分析师</h3>
-                    <MarkdownView markdown={result.analystReports.social.markdown} />
+                    {socialReportMarkdown ? (
+                      <MarkdownView markdown={socialReportMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "舆情分析师正在生成中..." : "等待内容"}</div>
+                    )}
                   </div>
                 </div>
               </section>
 
               <section className="panel anchor-target" id="section-debates">
                 <h2>多空辩论</h2>
-                <div className="timeline">
-                  {result.debates.map((turn) => (
-                    <article
-                      className="turn anchor-target"
-                      id={`section-debate-round-${turn.roundId}`}
-                      key={turn.roundId}
-                    >
-                      <span className="badge">第 {turn.roundId} 轮</span>
-                      <div className="grid cols-2">
-                        <div className="card">
-                          <h3>🐂 多头</h3>
-                          <MarkdownView markdown={turn.bullMarkdown} />
+                {displayedDebates.length ? (
+                  <div className="timeline">
+                    {displayedDebates.map((turn) => (
+                      <article
+                        className="turn anchor-target"
+                        id={`section-debate-round-${turn.roundId}`}
+                        key={turn.roundId}
+                      >
+                        <span className="badge">第 {turn.roundId} 轮</span>
+                        <div className="grid cols-2">
+                          <div className="card">
+                            <h3>🐂 多头</h3>
+                            {turn.bullMarkdown ? (
+                              <MarkdownView markdown={turn.bullMarkdown} />
+                            ) : (
+                              <div className="empty-state">多头观点生成中...</div>
+                            )}
+                          </div>
+                          <div className="card">
+                            <h3>🐻 空头</h3>
+                            {turn.bearMarkdown ? (
+                              <MarkdownView markdown={turn.bearMarkdown} />
+                            ) : (
+                              <div className="empty-state">空头观点生成中...</div>
+                            )}
+                          </div>
                         </div>
-                        <div className="card">
-                          <h3>🐻 空头</h3>
-                          <MarkdownView markdown={turn.bearMarkdown} />
-                        </div>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state">{isAnalyzing ? "多空辩论尚未开始" : "暂无辩论记录"}</div>
+                )}
               </section>
 
               <section className="panel anchor-target" id="section-risk">
@@ -754,20 +890,36 @@ export function AnalysisDashboard({
                 <div className="card-grid triple">
                   <div className="card">
                     <h3>🚨 激进派</h3>
-                    <MarkdownView markdown={result.riskReports.risky} />
+                    {riskyMarkdown ? (
+                      <MarkdownView markdown={riskyMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "激进派评估中..." : "等待内容"}</div>
+                    )}
                   </div>
                   <div className="card">
                     <h3>🛡️ 保守派</h3>
-                    <MarkdownView markdown={result.riskReports.safe} />
+                    {safeMarkdown ? (
+                      <MarkdownView markdown={safeMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "保守派评估中..." : "等待内容"}</div>
+                    )}
                   </div>
                   <div className="card">
                     <h3>⚖️ 中立派</h3>
-                    <MarkdownView markdown={result.riskReports.neutral} />
+                    {neutralMarkdown ? (
+                      <MarkdownView markdown={neutralMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "中立派评估中..." : "等待内容"}</div>
+                    )}
                   </div>
                 </div>
                 <div className="judge-box">
                   <h3>风控法官</h3>
-                  <MarkdownView markdown={result.riskReports.judge} />
+                  {judgeMarkdown ? (
+                    <MarkdownView markdown={judgeMarkdown} />
+                  ) : (
+                    <div className="empty-state">{isAnalyzing ? "法官裁定生成中..." : "等待裁定"}</div>
+                  )}
                 </div>
               </section>
             </>
