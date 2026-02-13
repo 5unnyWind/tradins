@@ -929,7 +929,7 @@ export function AnalysisDashboard({
                   inputMode="text"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="AAPL / 0700.HK / 600519.SS"
+                  placeholder="AAPL / 0700.HK / 600519.SS / 000001.SZ"
                 />
               </label>
               <label>
