@@ -251,6 +251,10 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   min-width: 0;
 }
 
+.panel > h2 {
+  margin-bottom: 12px;
+}
+
 .form-panel {
   display: grid;
   gap: 10px;
