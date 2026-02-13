@@ -16,7 +16,7 @@ const noStoreHeaders = {
 };
 
 const LoginSchema = z.object({
-  password: z.string().min(1, "密码不能为空"),
+  password: z.string().trim().min(1, "密码不能为空"),
 });
 
 export async function POST(request: Request) {

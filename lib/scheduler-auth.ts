@@ -30,6 +30,12 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(left, right);
 }
 
+function getConfiguredPassword(): string | null {
+  const configured = process.env.SCHEDULER_ADMIN_PASSWORD ?? "";
+  const normalized = configured.trim();
+  return normalized || null;
+}
+
 function getAuthSecret(): string | null {
   const secret = process.env.SCHEDULER_AUTH_SECRET ?? process.env.TRADINS_API_KEY ?? "";
   const trimmed = secret.trim();
@@ -66,14 +72,13 @@ function verifySessionToken(token: string, secret: string): boolean {
 }
 
 export function isSchedulerAuthConfigured(): boolean {
-  const password = process.env.SCHEDULER_ADMIN_PASSWORD ?? "";
-  return Boolean(password.trim() && getAuthSecret());
+  return Boolean(getConfiguredPassword() && getAuthSecret());
 }
 
 export function validateSchedulerPassword(password: string): boolean {
-  const configured = process.env.SCHEDULER_ADMIN_PASSWORD ?? "";
+  const configured = getConfiguredPassword();
   if (!configured) return false;
-  return safeEqual(password, configured);
+  return safeEqual(password.trim(), configured);
 }
 
 export function buildSchedulerSessionCookie() {
