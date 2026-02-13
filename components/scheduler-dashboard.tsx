@@ -360,7 +360,7 @@ export function SchedulerDashboard() {
               <input
                 value={symbol}
                 onChange={(event) => setSymbol(event.target.value)}
-                placeholder="AAPL / 0700.HK / 600519.SS / 000001.SZ"
+                placeholder="美股: AAPL / A股: 688256"
               />
             </label>
             <label>

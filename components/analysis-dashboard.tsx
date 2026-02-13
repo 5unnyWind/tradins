@@ -951,7 +951,7 @@ export function AnalysisDashboard({
                   inputMode="text"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="AAPL / 688256 / 0700.HK / 600519.SS"
+                  placeholder="美股: AAPL / A股: 688256"
                 />
               </label>
               <label>
