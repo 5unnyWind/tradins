@@ -26,6 +26,25 @@ const fetcher = async (url: string) => {
 };
 
 const RECORD_PAGE_SIZE = 10;
+const FLOW_GRAPH_MERMAID = [
+  "graph TD",
+  "  MarketAnalyst --> BullResearcher",
+  "  FundamentalsAnalyst --> BullResearcher",
+  "  NewsAnalyst --> BullResearcher",
+  "  SocialAnalyst --> BullResearcher",
+  "  MarketAnalyst --> BearResearcher",
+  "  FundamentalsAnalyst --> BearResearcher",
+  "  NewsAnalyst --> BearResearcher",
+  "  SocialAnalyst --> BearResearcher",
+  "  BullResearcher --> ResearchManager",
+  "  BearResearcher --> ResearchManager",
+  "  ResearchManager --> RiskyAnalyst",
+  "  ResearchManager --> SafeAnalyst",
+  "  ResearchManager --> NeutralAnalyst",
+  "  RiskyAnalyst --> RiskJudge",
+  "  SafeAnalyst --> RiskJudge",
+  "  NeutralAnalyst --> RiskJudge",
+].join("\n");
 
 function fmtNum(value: unknown, digits = 2): string {
   const n = Number(value);
@@ -415,9 +434,7 @@ export function AnalysisDashboard({
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
 
   const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
-    const targets: QuickJumpTarget[] = [
-      { id: "section-flow", label: "数据流图" },
-    ];
+    const targets: QuickJumpTarget[] = [];
     if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
@@ -664,6 +681,10 @@ export function AnalysisDashboard({
               <p className="storage-tag">
                 当前存储: <strong>{storageMode}</strong>
               </p>
+              <div className="hero-flow">
+                <h2>数据流图</h2>
+                <MermaidView code={FLOW_GRAPH_MERMAID} />
+              </div>
             </div>
 
             <form
@@ -749,11 +770,6 @@ export function AnalysisDashboard({
                 </div>
               ) : null}
             </form>
-          </section>
-
-          <section className="panel anchor-target" id="section-flow">
-            <h2>数据流图</h2>
-            {result ? <MermaidView code={result.graphMermaid} /> : <div className="empty-state">先运行一次分析</div>}
           </section>
 
           {showAnalysisPanels ? (

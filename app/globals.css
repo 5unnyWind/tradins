@@ -219,6 +219,17 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   margin-top: 12px !important;
 }
 
+.hero-flow {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #294055;
+}
+
+.hero-flow h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--line);
