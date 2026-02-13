@@ -199,7 +199,7 @@ export function AnalysisDashboard({
   const [statusLog, setStatusLog] = useState<string[]>([]);
   const [streamArtifacts, setStreamArtifacts] = useState<StreamArtifactItem[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
 
   const initialPage: RecordsPageResponse = {
