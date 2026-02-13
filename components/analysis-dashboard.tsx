@@ -469,7 +469,7 @@ export function AnalysisDashboard({
   initialStorageMode,
   initialHasMore,
 }: DashboardProps) {
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
   const [debateRounds, setDebateRounds] = useState("");
   const [period, setPeriod] = useState("6mo");

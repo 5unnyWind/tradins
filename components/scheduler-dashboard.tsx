@@ -77,7 +77,7 @@ export function SchedulerDashboard() {
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
 
   const [name, setName] = useState("");
-  const [symbol, setSymbol] = useState("AAPL");
+  const [symbol, setSymbol] = useState("");
   const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
   const [debateRounds, setDebateRounds] = useState("2");
   const [period, setPeriod] = useState("6mo");
