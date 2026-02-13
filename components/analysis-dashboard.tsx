@@ -484,6 +484,7 @@ export function AnalysisDashboard({
   const sidebarRef = useRef<HTMLElement | null>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const recordListRef = useRef<HTMLDivElement | null>(null);
+  const statusLogRef = useRef<HTMLDivElement | null>(null);
 
   const initialPage: RecordsPageResponse = {
     records: initialRecords,
@@ -644,8 +645,8 @@ export function AnalysisDashboard({
   function pushStatusLine(line: string) {
     setStatus(line);
     setStatusLog((prev) => {
-      if (prev[0] === line) return prev;
-      return [line, ...prev].slice(0, 8);
+      if (prev[prev.length - 1] === line) return prev;
+      return [...prev, line].slice(-8);
     });
   }
 
@@ -681,6 +682,12 @@ export function AnalysisDashboard({
       window.cancelAnimationFrame(rafId);
     };
   }, [isSidebarOpen, records.length, recordsHasMore, isLoadingMoreRecords, loadMoreRecords]);
+
+  useEffect(() => {
+    const element = statusLogRef.current;
+    if (!element) return;
+    element.scrollTop = element.scrollHeight;
+  }, [statusLog]);
 
   async function refreshLatestRecords(seed?: number): Promise<void> {
     const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
@@ -1006,7 +1013,7 @@ export function AnalysisDashboard({
                 {status}
               </p>
               {statusLog.length ? (
-                <div className="status-log">
+                <div className="status-log" ref={statusLogRef}>
                   {statusLog.map((line, index) => (
                     <p key={`${index}-${line}`}>{line}</p>
                   ))}
