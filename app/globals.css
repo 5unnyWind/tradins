@@ -675,6 +675,69 @@ button.record-item:hover:not(:disabled) {
   margin-bottom: 8px;
 }
 
+.calibration-box {
+  margin-bottom: 12px;
+  border: 1px solid #2f4a62;
+  border-radius: 12px;
+  background: linear-gradient(158deg, rgba(15, 28, 43, 0.9), rgba(10, 20, 31, 0.92));
+  padding: 10px 12px;
+}
+
+.calibration-box.level-high {
+  border-color: rgba(45, 212, 191, 0.52);
+}
+
+.calibration-box.level-medium {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.calibration-box.level-low {
+  border-color: rgba(251, 146, 60, 0.5);
+}
+
+.calibration-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.calibration-head strong {
+  font-size: 14px;
+}
+
+.calibration-confidence {
+  font-size: 12px;
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.calibration-main,
+.calibration-summary {
+  margin: 4px 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.calibration-summary {
+  color: var(--ink-soft);
+}
+
+.calibration-list {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.calibration-list li {
+  font-size: 12px;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
 .markdown {
   line-height: 1.65;
   color: var(--ink);
@@ -1081,6 +1144,15 @@ button.record-item:hover:not(:disabled) {
 
   .card h3 {
     font-size: 16px;
+  }
+
+  .calibration-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .calibration-confidence {
+    white-space: normal;
   }
 
   .bg-orb {

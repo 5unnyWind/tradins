@@ -1,4 +1,4 @@
-import { extractRecommendation } from "@/lib/engine";
+import { resolveFinalRecommendation } from "@/lib/engine";
 import type { AnalysisInput, AnalysisRecordMeta, AnalysisResult } from "@/lib/types";
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -66,7 +66,7 @@ export async function saveRecord(
   input: AnalysisInput,
   result: AnalysisResult,
 ): Promise<{ id: number; storage: "vercel_postgres" | "memory" }> {
-  const recommendation = extractRecommendation(result.riskReports.judge);
+  const recommendation = resolveFinalRecommendation(result);
   if (!hasVercelPostgres) {
     const records = await readLocalStore();
     const id = (records[0]?.meta.id ?? 0) + 1;

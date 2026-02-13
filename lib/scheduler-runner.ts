@@ -1,6 +1,6 @@
 import { normalizeAnalysisInput } from "@/lib/config";
 import { saveRecord } from "@/lib/db";
-import { extractRecommendation, runTradinsAnalysis } from "@/lib/engine";
+import { resolveFinalRecommendation, runTradinsAnalysis } from "@/lib/engine";
 import {
   computeNextRunAt,
   getSchedulerTask,
@@ -41,7 +41,7 @@ async function runTask(task: SchedulerTask, force = false): Promise<SchedulerRun
   try {
     const result = await runTradinsAnalysis(input);
     const saved = await saveRecord(input, result);
-    const recommendation = extractRecommendation(result.riskReports.judge);
+    const recommendation = resolveFinalRecommendation(result);
     const message = `执行成功，记录 #${saved.id}${recommendation ? `，建议: ${recommendation}` : ""}`;
     await saveSchedulerTaskRunResult({
       id: task.id,

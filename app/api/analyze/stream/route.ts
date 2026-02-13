@@ -3,7 +3,7 @@ import { z } from "zod";
 
 import { normalizeAnalysisInput } from "@/lib/config";
 import { currentStorageMode, saveRecord } from "@/lib/db";
-import { extractRecommendation, runTradinsAnalysis } from "@/lib/engine";
+import { resolveFinalRecommendation, runTradinsAnalysis } from "@/lib/engine";
 import type { AnalysisRecordMeta } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
             symbol: input.symbol,
             analysisMode: input.analysisMode,
             debateRounds: input.debateRounds,
-            recommendation: extractRecommendation(result.riskReports.judge),
+            recommendation: resolveFinalRecommendation(result),
             createdAt: new Date().toISOString(),
           };
 

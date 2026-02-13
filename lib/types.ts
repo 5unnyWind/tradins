@@ -112,6 +112,19 @@ export interface DebateTurn {
   bearMarkdown: string;
 }
 
+export type InvestmentRecommendation = "买入" | "观望" | "减仓" | "卖出";
+
+export interface RecommendationCalibration {
+  finalRecommendation: InvestmentRecommendation | null;
+  confidence: number;
+  confidenceLevel: "low" | "medium" | "high";
+  supportVotes: number;
+  totalVotes: number;
+  conflicts: string[];
+  evidence: string[];
+  summary: string;
+}
+
 export interface AnalysisResult {
   symbol: string;
   analystReports: {
@@ -128,6 +141,7 @@ export interface AnalysisResult {
     neutral: string;
     judge: string;
   };
+  recommendationCalibration?: RecommendationCalibration;
   stageBundle: StageBundle;
   graphMermaid: string;
   finalReport: string;

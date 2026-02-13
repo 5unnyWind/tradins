@@ -21,6 +21,8 @@ import type {
   AnalysisInput,
   AnalysisResult,
   DebateTurn,
+  InvestmentRecommendation,
+  RecommendationCalibration,
   StageBundle,
 } from "@/lib/types";
 
@@ -109,6 +111,177 @@ async function collectStageBundle(
   return { market, fundamentals, news, social };
 }
 
+function clampScore(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function resolveTrendBias(trend: string | null | undefined): "bullish" | "bearish" | "neutral" {
+  const normalized = (trend ?? "").toLowerCase();
+  if (!normalized) return "neutral";
+  if (/(down|bear|空|下跌|走弱|回落|弱势)/u.test(normalized)) return "bearish";
+  if (/(up|bull|多|上涨|走强|上行|强势)/u.test(normalized)) return "bullish";
+  return "neutral";
+}
+
+function resolveRecommendationBias(
+  recommendation: InvestmentRecommendation | null,
+): "bullish" | "bearish" | "neutral" {
+  if (recommendation === "买入") return "bullish";
+  if (recommendation === "减仓" || recommendation === "卖出") return "bearish";
+  return "neutral";
+}
+
+function pickCabinetMajority(votes: InvestmentRecommendation[]): InvestmentRecommendation | null {
+  if (!votes.length) return null;
+  const order: InvestmentRecommendation[] = ["买入", "观望", "减仓", "卖出"];
+  const counts = new Map<InvestmentRecommendation, number>();
+  for (const vote of votes) {
+    counts.set(vote, (counts.get(vote) ?? 0) + 1);
+  }
+  let best: InvestmentRecommendation | null = null;
+  let bestCount = 0;
+  let tied = false;
+  for (const recommendation of order) {
+    const count = counts.get(recommendation) ?? 0;
+    if (count > bestCount) {
+      best = recommendation;
+      bestCount = count;
+      tied = false;
+      continue;
+    }
+    if (count > 0 && count === bestCount) {
+      tied = true;
+    }
+  }
+  if (tied || bestCount === 0) return null;
+  return best;
+}
+
+function buildRecommendationCalibration(
+  stageBundle: StageBundle,
+  preliminaryPlan: string,
+  riskReports: AnalysisResult["riskReports"],
+): RecommendationCalibration {
+  const riskyRecommendation = extractRecommendation(riskReports.risky);
+  const safeRecommendation = extractRecommendation(riskReports.safe);
+  const neutralRecommendation = extractRecommendation(riskReports.neutral);
+  const judgeRecommendation = extractRecommendation(riskReports.judge);
+  const managerRecommendation = extractRecommendation(preliminaryPlan);
+
+  const cabinetVotes: InvestmentRecommendation[] = [
+    riskyRecommendation,
+    safeRecommendation,
+    neutralRecommendation,
+  ].filter((item): item is InvestmentRecommendation => Boolean(item));
+
+  const cabinetMajority = pickCabinetMajority(cabinetVotes);
+  const finalRecommendation = judgeRecommendation ?? cabinetMajority ?? managerRecommendation ?? null;
+  const totalVotes = cabinetVotes.length;
+  const supportVotes = finalRecommendation
+    ? cabinetVotes.filter((vote) => vote === finalRecommendation).length
+    : 0;
+
+  const conflicts: string[] = [];
+  if (judgeRecommendation && cabinetMajority && judgeRecommendation !== cabinetMajority) {
+    conflicts.push(`法官建议（${judgeRecommendation}）与风控内阁多数意见（${cabinetMajority}）不一致。`);
+  }
+  if (cabinetVotes.length === 3) {
+    const distinctVotes = new Set(cabinetVotes);
+    if (distinctVotes.size === 3) {
+      conflicts.push("风控内阁三方建议完全分歧，未形成一致结论。");
+    }
+  }
+  if (cabinetVotes.length >= 2 && !cabinetMajority) {
+    conflicts.push("风控内阁未形成多数结论，一致性偏弱。");
+  }
+
+  const trend = stageBundle.market.technicals.trend;
+  const trendBias = resolveTrendBias(trend);
+  const recommendationBias = resolveRecommendationBias(finalRecommendation);
+  if (recommendationBias === "bullish" && trendBias === "bearish") {
+    conflicts.push(`建议偏多（${finalRecommendation}），但技术趋势为${trend || "未知"}。`);
+  }
+  if (recommendationBias === "bearish" && trendBias === "bullish") {
+    conflicts.push(`建议偏空（${finalRecommendation}），但技术趋势为${trend || "未知"}。`);
+  }
+
+  const sentimentInputs = [stageBundle.news.avgSentiment, stageBundle.social.avgSentiment].filter((value) =>
+    Number.isFinite(value),
+  ) as number[];
+  const blendedSentiment =
+    sentimentInputs.length > 0
+      ? sentimentInputs.reduce((sum, value) => sum + value, 0) / sentimentInputs.length
+      : null;
+  if (blendedSentiment !== null) {
+    if (recommendationBias === "bullish" && blendedSentiment <= -0.18) {
+      conflicts.push("建议偏多，但新闻/舆情综合情绪偏负面。");
+    }
+    if (recommendationBias === "bearish" && blendedSentiment >= 0.18) {
+      conflicts.push("建议偏空，但新闻/舆情综合情绪偏正面。");
+    }
+  }
+
+  const socialErrorCount = Array.isArray(stageBundle.social.errors)
+    ? stageBundle.social.errors.filter(Boolean).length
+    : 0;
+  const dataGaps: string[] = [];
+  if (stageBundle.market.error) dataGaps.push("市场");
+  if (stageBundle.fundamentals.error) dataGaps.push("基本面");
+  if (stageBundle.news.error) dataGaps.push("新闻");
+  if (socialErrorCount > 0) dataGaps.push(`舆情(${socialErrorCount}项)`);
+  if (dataGaps.length) {
+    conflicts.push(`部分数据源存在缺口：${dataGaps.join("、")}。`);
+  }
+
+  let confidence = finalRecommendation ? 46 : 22;
+  if (judgeRecommendation) confidence += 16;
+  if (managerRecommendation && managerRecommendation === finalRecommendation) confidence += 6;
+  if (cabinetMajority && cabinetMajority === finalRecommendation) confidence += 10;
+  if (totalVotes > 0 && finalRecommendation) {
+    confidence += (supportVotes / totalVotes) * 14;
+  }
+  if (totalVotes === 0) confidence -= 10;
+  if (stageBundle.market.error) confidence -= 10;
+  else confidence += 4;
+  if (stageBundle.fundamentals.error) confidence -= 8;
+  else confidence += 4;
+  if (stageBundle.news.error) confidence -= 6;
+  else confidence += 3;
+  if (socialErrorCount > 0) confidence -= Math.min(7, socialErrorCount * 2);
+  else confidence += 3;
+  confidence -= Math.min(24, conflicts.length * 6);
+  confidence = clampScore(confidence, 5, 95);
+
+  const confidenceLevel: RecommendationCalibration["confidenceLevel"] =
+    confidence >= 72 ? "high" : confidence >= 50 ? "medium" : "low";
+  const levelText =
+    confidenceLevel === "high" ? "信号一致性高" : confidenceLevel === "medium" ? "信号一致性中等" : "信号分歧偏大";
+  const summary = conflicts.length
+    ? `${levelText}，检测到 ${conflicts.length} 项冲突信号。`
+    : `${levelText}，暂未发现显著冲突信号。`;
+
+  const evidence: string[] = [
+    `风控投票：激进=${riskyRecommendation ?? "未给出"}，保守=${safeRecommendation ?? "未给出"}，中立=${neutralRecommendation ?? "未给出"}。`,
+    `研究主管建议=${managerRecommendation ?? "未给出"}；法官建议=${judgeRecommendation ?? "未给出"}。`,
+    `技术趋势=${trend || "未知"}。`,
+    blendedSentiment === null
+      ? "综合情绪=数据不足。"
+      : `综合情绪=${blendedSentiment.toFixed(3)}（新闻+舆情均值）。`,
+    dataGaps.length ? `数据完整性：存在缺口（${dataGaps.join("、")}）。` : "数据完整性：主要数据源可用。",
+  ];
+
+  return {
+    finalRecommendation,
+    confidence,
+    confidenceLevel,
+    supportVotes,
+    totalVotes,
+    conflicts,
+    evidence,
+    summary,
+  };
+}
+
 function renderFinalMarkdown(input: AnalysisInput, result: Omit<AnalysisResult, "finalReport">): string {
   const generatedAt = new Date().toISOString();
   const debateText = result.debates
@@ -117,6 +290,20 @@ function renderFinalMarkdown(input: AnalysisInput, result: Omit<AnalysisResult, 
         `### 第 ${d.roundId} 轮\n\n#### 多头观点\n${d.bullMarkdown}\n\n#### 空头观点\n${d.bearMarkdown}`,
     )
     .join("\n\n");
+  const calibration = result.recommendationCalibration;
+  const calibrationMarkdown = calibration
+    ? `
+## 建议校准层
+- 最终建议: \`${calibration.finalRecommendation ?? "N/A"}\`
+- 置信度: \`${calibration.confidence}/100 (${calibration.confidenceLevel})\`
+- 内阁支持度: \`${calibration.supportVotes}/${calibration.totalVotes}\`
+- 校准摘要: ${calibration.summary}
+- 冲突信号:
+${calibration.conflicts.length ? calibration.conflicts.map((item) => `  - ${item}`).join("\n") : "  - 暂无"}
+- 证据摘要:
+${calibration.evidence.map((item) => `  - ${item}`).join("\n")}
+`
+    : "";
 
   return `# tradins 多智能体股票分析报告
 
@@ -161,10 +348,12 @@ ${result.riskReports.neutral}
 
 ## 风控法官最终裁定
 ${result.riskReports.judge}
+
+${calibrationMarkdown}
 `;
 }
 
-export function extractRecommendation(markdown: string): string | null {
+export function extractRecommendation(markdown: string): InvestmentRecommendation | null {
   const text = markdown.replace(/\r/g, "");
   const recommendationPattern = /(买入|观望|减仓|卖出)/u;
   const sectionPattern = /##\s*最终投资建议(?!（开头）|（末尾）)[^\n]*\n([\s\S]{0,240})/gu;
@@ -173,24 +362,28 @@ export function extractRecommendation(markdown: string): string | null {
     const body = sectionMatches[i]?.[1];
     if (!body) continue;
     const hit = body.match(recommendationPattern);
-    if (hit?.[1]) return hit[1];
+    if (hit?.[1]) return hit[1] as InvestmentRecommendation;
   }
 
   const advicePattern = /建议[:：]\s*`?(买入|观望|减仓|卖出)`?/gu;
   const adviceMatches = [...text.matchAll(advicePattern)];
   if (adviceMatches.length) {
     const last = adviceMatches.at(-1);
-    if (last?.[1]) return last[1];
+    if (last?.[1]) return last[1] as InvestmentRecommendation;
   }
 
   const keywordPattern = /(买入|观望|减仓|卖出)/gu;
   const keywordMatches = [...text.matchAll(keywordPattern)];
   if (keywordMatches.length) {
     const last = keywordMatches.at(-1);
-    if (last?.[1]) return last[1];
+    if (last?.[1]) return last[1] as InvestmentRecommendation;
   }
 
   return null;
+}
+
+export function resolveFinalRecommendation(result: AnalysisResult): InvestmentRecommendation | null {
+  return result.recommendationCalibration?.finalRecommendation ?? extractRecommendation(result.riskReports.judge);
 }
 
 export async function runTradinsAnalysis(
@@ -332,12 +525,19 @@ export async function runTradinsAnalysis(
   });
 
   const graphMermaid = getFlowGraphMermaid();
+  const recommendationCalibration = buildRecommendationCalibration(stageBundle, preliminaryPlan, {
+    risky,
+    safe,
+    neutral,
+    judge,
+  });
   const baseResult: Omit<AnalysisResult, "finalReport"> = {
     symbol: input.symbol,
     analystReports,
     debates,
     preliminaryPlan,
     riskReports: { risky, safe, neutral, judge },
+    recommendationCalibration,
     stageBundle,
     graphMermaid,
   };

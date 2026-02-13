@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
-import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot } from "@/lib/types";
+import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, RecommendationCalibration } from "@/lib/types";
 
 const PriceChart = dynamic(
   () => import("@/components/price-chart").then((m) => m.PriceChart),
@@ -99,6 +99,12 @@ function formatRecordTimestamp(value: string): string {
     minute: "2-digit",
     hour12: false,
   }).format(date);
+}
+
+function confidenceLevelText(level: RecommendationCalibration["confidenceLevel"]): string {
+  if (level === "high") return "高";
+  if (level === "medium") return "中";
+  return "低";
 }
 
 function getRecordDateKey(value: string): string {
@@ -585,6 +591,7 @@ export function AnalysisDashboard({
     () => stripLegacyRecommendationBlocks(rawJudgeMarkdown),
     [rawJudgeMarkdown],
   );
+  const recommendationCalibration = result?.recommendationCalibration ?? null;
 
   const streamHasContent = useMemo(() => {
     return Boolean(
@@ -1188,6 +1195,29 @@ export function AnalysisDashboard({
 
               <section className="panel anchor-target" id="section-risk">
                 <h2>风控内阁与最终裁定</h2>
+                {recommendationCalibration ? (
+                  <div className={`calibration-box level-${recommendationCalibration.confidenceLevel}`}>
+                    <div className="calibration-head">
+                      <strong>建议校准层</strong>
+                      <span className="calibration-confidence">
+                        置信度 {recommendationCalibration.confidence}/100（
+                        {confidenceLevelText(recommendationCalibration.confidenceLevel)}）
+                      </span>
+                    </div>
+                    <p className="calibration-main">
+                      最终建议：{recommendationCalibration.finalRecommendation ?? "N/A"} · 内阁支持度：
+                      {recommendationCalibration.supportVotes}/{recommendationCalibration.totalVotes}
+                    </p>
+                    <p className="calibration-summary">{recommendationCalibration.summary}</p>
+                    {recommendationCalibration.conflicts.length ? (
+                      <ul className="calibration-list">
+                        {recommendationCalibration.conflicts.map((item, index) => (
+                          <li key={`conflict-${index}-${item}`}>{item}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="card-grid triple">
                   <div className="card">
                     <h3>🚨 激进派</h3>
