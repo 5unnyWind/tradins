@@ -115,7 +115,7 @@ h3 {
 
 .records-drawer-toggle {
   position: fixed;
-  top: calc(88px + env(safe-area-inset-top));
+  top: calc(108px + env(safe-area-inset-top));
   left: calc(10px + env(safe-area-inset-left));
   z-index: 44;
   border: 1px solid #2d475d;
@@ -642,7 +642,7 @@ button.quick-nav-pill:hover:not(:disabled) {
   }
 
   .records-drawer-toggle {
-    top: calc(80px + env(safe-area-inset-top));
+    top: calc(100px + env(safe-area-inset-top));
     left: calc(8px + env(safe-area-inset-left));
   }
 
