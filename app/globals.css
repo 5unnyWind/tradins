@@ -242,6 +242,7 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   min-height: 38px;
   padding: 0 12px;
   border-radius: 10px;
@@ -255,6 +256,12 @@ button.records-drawer-backdrop:hover:not(:disabled) {
 
 .hero-link-button:hover {
   filter: brightness(1.07);
+}
+
+.hero-link-icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
 }
 
 .hero-flow {
