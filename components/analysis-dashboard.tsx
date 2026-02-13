@@ -710,6 +710,12 @@ export function AnalysisDashboard({
   }
 
   async function runAnalysis() {
+    const normalizedSymbol = symbol.trim().toUpperCase();
+    if (!normalizedSymbol) {
+      pushStatusLine("请输入股票代码");
+      return;
+    }
+
     setIsAnalyzing(true);
     setStatusLog([]);
     setStreamCards(createEmptyStreamCardsState());
@@ -717,7 +723,7 @@ export function AnalysisDashboard({
     pushStatusLine("正在建立流式连接...");
 
     const payload: Record<string, unknown> = {
-      symbol: symbol.trim().toUpperCase(),
+      symbol: normalizedSymbol,
       analysisMode,
       period: period.trim(),
       interval: interval.trim(),
@@ -956,6 +962,8 @@ export function AnalysisDashboard({
                   autoCapitalize="characters"
                   spellCheck={false}
                   inputMode="text"
+                  required
+                  maxLength={20}
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
                   placeholder="美股: AAPL / A股: 688256 / 黄金: GOLD / 白银: SILVER"
@@ -1006,7 +1014,7 @@ export function AnalysisDashboard({
                   onChange={(e) => setInterval(e.target.value)}
                 />
               </label>
-              <button type="submit" disabled={isAnalyzing}>
+              <button type="submit" disabled={isAnalyzing || !symbol.trim()}>
                 {isAnalyzing ? "分析中..." : "开始分析"}
               </button>
               <p className="status" aria-live="polite">

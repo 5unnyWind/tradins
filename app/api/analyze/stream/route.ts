@@ -10,7 +10,11 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const InputSchema = z.object({
-  symbol: z.string().min(1).max(20).optional(),
+  symbol: z
+    .string({ required_error: "股票代码不能为空" })
+    .trim()
+    .min(1, "股票代码不能为空")
+    .max(20, "股票代码最长 20 个字符"),
   analysisMode: z.enum(["quick", "standard", "deep"]).optional(),
   debateRounds: z.number().int().min(1).max(10).optional(),
   period: z.string().optional(),

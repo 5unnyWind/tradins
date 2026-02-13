@@ -44,7 +44,11 @@ export function getLLMConfig(): LLMRuntimeConfig {
 }
 
 export function normalizeAnalysisInput(raw: Partial<AnalysisInput>): AnalysisInput {
-  const symbol = normalizeTradableSymbol(raw.symbol ?? "AAPL");
+  const rawSymbol = raw.symbol?.trim() ?? "";
+  if (!rawSymbol) {
+    throw new Error("股票代码不能为空");
+  }
+  const symbol = normalizeTradableSymbol(rawSymbol);
   const analysisMode = ((raw.analysisMode ?? "standard") as AnalysisMode).toLowerCase() as AnalysisMode;
   const modeRounds: Record<AnalysisMode, number> = {
     quick: 1,

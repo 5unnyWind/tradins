@@ -14,7 +14,11 @@ const noStoreHeaders = {
 };
 
 const InputSchema = z.object({
-  symbol: z.string().min(1).max(20).optional(),
+  symbol: z
+    .string({ required_error: "股票代码不能为空" })
+    .trim()
+    .min(1, "股票代码不能为空")
+    .max(20, "股票代码最长 20 个字符"),
   analysisMode: z.enum(["quick", "standard", "deep"]).optional(),
   debateRounds: z.number().int().min(1).max(10).optional(),
   period: z.string().optional(),
@@ -22,9 +26,19 @@ const InputSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  let parsed: z.infer<typeof InputSchema>;
   try {
     const body = await request.json();
-    const parsed = InputSchema.parse(body);
+    parsed = InputSchema.parse(body);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Invalid analyze payload";
+    return NextResponse.json(
+      { ok: false, error: message, storage: currentStorageMode() },
+      { status: 400, headers: noStoreHeaders },
+    );
+  }
+
+  try {
     const input = normalizeAnalysisInput(parsed);
     const result = await runTradinsAnalysis(input);
     const saved = await saveRecord(input, result);

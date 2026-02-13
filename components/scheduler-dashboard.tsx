@@ -181,8 +181,12 @@ export function SchedulerDashboard() {
     setSubmitting(true);
     setStatus("");
     try {
+      const normalizedSymbol = symbol.trim().toUpperCase();
       const rounds = Number(debateRounds);
       const intervalMins = Number(intervalMinutes);
+      if (!normalizedSymbol) {
+        throw new Error("股票代码不能为空");
+      }
       if (!Number.isInteger(rounds) || rounds < 1 || rounds > 10) {
         throw new Error("辩论轮次需为 1-10 的整数");
       }
@@ -193,8 +197,8 @@ export function SchedulerDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim() || `${symbol.trim().toUpperCase()} ${intervalMins}m`,
-          symbol: symbol.trim().toUpperCase(),
+          name: name.trim() || `${normalizedSymbol} ${intervalMins}m`,
+          symbol: normalizedSymbol,
           analysisMode,
           debateRounds: rounds,
           period: period.trim(),
@@ -358,6 +362,8 @@ export function SchedulerDashboard() {
             <label>
               股票代码
               <input
+                required
+                maxLength={20}
                 value={symbol}
                 onChange={(event) => setSymbol(event.target.value)}
                 placeholder="美股: AAPL / A股: 688256 / 黄金: GOLD / 白银: SILVER"
@@ -410,7 +416,7 @@ export function SchedulerDashboard() {
               />
               创建后立即启用
             </label>
-            <button type="submit" disabled={submitting}>
+            <button type="submit" disabled={submitting || !symbol.trim()}>
               {submitting ? "创建中..." : "创建任务"}
             </button>
           </form>
