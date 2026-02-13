@@ -101,6 +101,16 @@ function formatRecordTimestamp(value: string): string {
   }).format(date);
 }
 
+function getRecordDateKey(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
 function formatUtcOffset(date: Date): string {
   const minutes = -date.getTimezoneOffset();
   const sign = minutes >= 0 ? "+" : "-";
@@ -872,35 +882,41 @@ export function AnalysisDashboard({
             id="records-scroll"
             onScroll={onRecordListScroll}
           >
-            {records.map((record) => (
-              <button
-                type="button"
-                className="record-item"
-                key={record.id}
-                onClick={() => {
-                  if (window.matchMedia("(max-width: 1080px)").matches) {
-                    setIsSidebarOpen(false);
-                  }
-                  loadRecord(record.id).catch((err) =>
-                    pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
-                  );
-                }}
-              >
-                <div className="record-item-main">
-                  <div className="record-item-symbol-row">
-                    <strong>{record.symbol}</strong>
-                    <small className="record-item-id">#{record.id}</small>
+            {records.map((record, index) => {
+              const previousRecord = records[index - 1];
+              const startsNewDateGroup =
+                index > 0 && getRecordDateKey(previousRecord.createdAt) !== getRecordDateKey(record.createdAt);
+
+              return (
+                <button
+                  type="button"
+                  className={`record-item${startsNewDateGroup ? " record-item-date-separator" : ""}`}
+                  key={record.id}
+                  onClick={() => {
+                    if (window.matchMedia("(max-width: 1080px)").matches) {
+                      setIsSidebarOpen(false);
+                    }
+                    loadRecord(record.id).catch((err) =>
+                      pushStatusLine(`加载失败: ${err instanceof Error ? err.message : String(err)}`),
+                    );
+                  }}
+                >
+                  <div className="record-item-main">
+                    <div className="record-item-symbol-row">
+                      <strong>{record.symbol}</strong>
+                      <small className="record-item-id">#{record.id}</small>
+                    </div>
+                    <span className="record-item-sub">
+                      {record.analysisMode} · {record.debateRounds} 轮
+                    </span>
                   </div>
-                  <span className="record-item-sub">
-                    {record.analysisMode} · {record.debateRounds} 轮
-                  </span>
-                </div>
-                <div className="record-item-side">
-                  <em>{record.recommendation ?? "-"}</em>
-                  <small>{formatRecordTimestamp(record.createdAt)}</small>
-                </div>
-              </button>
-            ))}
+                  <div className="record-item-side">
+                    <em>{record.recommendation ?? "-"}</em>
+                    <small>{formatRecordTimestamp(record.createdAt)}</small>
+                  </div>
+                </button>
+              );
+            })}
             {!records.length ? <div className="empty-state">暂无记录</div> : null}
             {isLoadingMoreRecords ? <div className="empty-state">加载更多中...</div> : null}
             {!recordsHasMore && records.length ? <div className="empty-state">已加载全部记录</div> : null}

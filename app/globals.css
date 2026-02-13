@@ -452,6 +452,10 @@ button.quick-nav-pill:hover:not(:disabled) {
   touch-action: pan-y;
 }
 
+.record-item-date-separator {
+  margin-top: 10px;
+}
+
 .record-item-main {
   min-width: 0;
   display: grid;
