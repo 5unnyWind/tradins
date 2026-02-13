@@ -688,7 +688,7 @@ button.record-item:hover:not(:disabled) {
 @media (max-width: 768px) {
   .shell {
     --records-drawer-width: min(
-      420px,
+      96vw,
       calc(100vw - 14px - env(safe-area-inset-left) - env(safe-area-inset-right))
     );
     width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
@@ -699,6 +699,8 @@ button.record-item:hover:not(:disabled) {
     top: calc(7px + env(safe-area-inset-top));
     left: calc(7px + env(safe-area-inset-left));
     max-height: calc(100vh - 14px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    background: rgba(8, 14, 22, 0.96);
+    backdrop-filter: blur(12px);
   }
 
   .records-sidebar-header h2 {
@@ -780,20 +782,43 @@ button.record-item:hover:not(:disabled) {
   }
 
   .record-item {
-    padding: 11px;
-    gap: 10px;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+    padding: 12px 12px 11px;
+    gap: 7px;
+    border-radius: 14px;
   }
 
   .records-scroll {
-    max-height: min(56vh, 420px);
+    max-height: min(66vh, 520px);
   }
 
   .record-item strong {
-    font-size: 15px;
+    font-size: 16px;
   }
 
   .record-item-side {
-    min-width: 88px;
+    width: 100%;
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    justify-items: stretch;
+    gap: 10px;
+  }
+
+  .record-item-sub {
+    margin-top: 4px;
+    line-height: 1.35;
+  }
+
+  .record-item-side small {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .record-item em {
+    font-size: 12px;
   }
 
   .metric strong {
@@ -863,20 +888,17 @@ button.record-item:hover:not(:disabled) {
   .status-log p,
   .record-item-sub,
   .record-item-side small {
-    font-size: 11px;
+    font-size: 12px;
   }
 
   .record-item {
-    grid-template-columns: 1fr;
-    gap: 6px;
+    padding: 11px;
+    gap: 7px;
   }
 
   .record-item-side {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
   }
 
   .record-item em {
