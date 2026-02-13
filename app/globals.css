@@ -441,6 +441,7 @@ button.quick-nav-pill:hover:not(:disabled) {
   align-items: center;
   gap: 12px;
   min-height: 0;
+  flex-shrink: 0;
   overflow: hidden;
   appearance: none;
   -webkit-appearance: none;
