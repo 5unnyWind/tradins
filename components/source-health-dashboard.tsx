@@ -78,27 +78,6 @@ export function SourceHealthDashboard() {
     }
   }, []);
 
-  const resetSnapshot = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/source-health?action=reset", {
-        method: "POST",
-        cache: "no-store",
-        headers: NO_CACHE_HEADERS,
-      });
-      const data = (await response.json()) as SourceHealthApiResponse;
-      if (!response.ok || !data.ok || !data.snapshot) {
-        throw new Error(data.error ?? `HTTP ${response.status}`);
-      }
-      setSnapshot(data.snapshot);
-      setStatus("已清空统计窗口");
-    } catch (error) {
-      setStatus(`重置失败: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     void loadSnapshot(false);
   }, [loadSnapshot]);
@@ -121,11 +100,20 @@ export function SourceHealthDashboard() {
           <p className="source-health-muted">实时统计 Yahoo / Eastmoney / Reddit 的命中率、失败率和延迟表现。</p>
         </div>
         <div className="source-health-actions">
-          <button type="button" onClick={() => void loadSnapshot(false)} disabled={loading}>
-            {loading ? "刷新中..." : "刷新"}
-          </button>
-          <button type="button" onClick={() => void resetSnapshot()} disabled={loading}>
-            重置窗口
+          <button
+            type="button"
+            className={`source-health-refresh${loading ? " is-loading" : ""}`}
+            onClick={() => void loadSnapshot(false)}
+            disabled={loading}
+            aria-label={loading ? "刷新中" : "刷新数据"}
+            title={loading ? "刷新中" : "刷新数据"}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                fill="currentColor"
+                d="M12 5a7 7 0 0 1 6.62 4.75H16v2h6V5h-2v3.24A9 9 0 0 0 3 12h2a7 7 0 0 1 7-7Zm7 6a7 7 0 0 1-7 7 7 7 0 0 1-6.62-4.75H8v-2H2v6h2v-3.24A9 9 0 0 0 21 12h-2Z"
+              />
+            </svg>
           </button>
           <a className="hero-link-button" href="/">
             返回分析页

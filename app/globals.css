@@ -987,8 +987,35 @@ button.record-item:hover:not(:disabled) {
   justify-content: flex-end;
 }
 
-.source-health-actions button {
+.source-health-refresh {
+  width: 38px;
+  height: 38px;
   min-height: 38px;
+  border-radius: 999px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.source-health-refresh svg {
+  width: 18px;
+  height: 18px;
+}
+
+.source-health-refresh.is-loading svg {
+  animation: source-health-spin 900ms linear infinite;
+}
+
+@keyframes source-health-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .source-health-muted {
@@ -1352,7 +1379,6 @@ button.record-item:hover:not(:disabled) {
     justify-content: flex-start;
   }
 
-  .source-health-actions button,
   .source-health-actions .hero-link-button {
     flex: 1 1 0;
   }
