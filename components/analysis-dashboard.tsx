@@ -124,11 +124,35 @@ function resolveSnapshotTimestamp(snapshot: MarketSnapshot): string | null {
   return latestBarKey;
 }
 
+function isDateLevelInterval(interval: string): boolean {
+  const normalized = interval.trim().toLowerCase();
+  return (
+    normalized.endsWith("d") ||
+    normalized.endsWith("wk") ||
+    normalized.endsWith("w") ||
+    normalized.endsWith("mo") ||
+    normalized.endsWith("mth")
+  );
+}
+
 function formatSnapshotTimestamp(snapshot: MarketSnapshot): string {
   const raw = resolveSnapshotTimestamp(snapshot);
   if (!raw) return "N/A";
   const date = new Date(raw);
   if (!Number.isFinite(date.getTime())) return raw;
+  if (
+    isDateLevelInterval(snapshot.interval) &&
+    date.getHours() === 0 &&
+    date.getMinutes() === 0 &&
+    date.getSeconds() === 0
+  ) {
+    const dayLabel = new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date);
+    return `${dayLabel}（该周期收盘快照）`;
+  }
   const label = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
     month: "2-digit",

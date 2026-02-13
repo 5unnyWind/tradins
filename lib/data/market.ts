@@ -145,19 +145,21 @@ function latestSnapshotAt(points: OHLCVPoint[]): string | null {
   return new Date((latestTs as number) * 1000).toISOString();
 }
 
-function parseEastmoneyKlineTimestamp(rawDate: string): number | null {
+function parseEastmoneyKlineTimestamp(rawDate: string, useCloseTimeForDateOnly: boolean): number | null {
   if (!rawDate) return null;
-  const normalized = rawDate.includes(" ") ? rawDate.replace(" ", "T") : `${rawDate}T00:00:00`;
+  const normalized = rawDate.includes(" ")
+    ? rawDate.replace(" ", "T")
+    : `${rawDate}T${useCloseTimeForDateOnly ? "15:00:00" : "00:00:00"}`;
   const withZone = `${normalized}+08:00`;
   const ms = Date.parse(withZone);
   if (!Number.isFinite(ms)) return null;
   return Math.floor(ms / 1000);
 }
 
-function parseEastmoneyKlineRow(rawRow: string): OHLCVPoint | null {
+function parseEastmoneyKlineRow(rawRow: string, useCloseTimeForDateOnly: boolean): OHLCVPoint | null {
   const fields = rawRow.split(",");
   if (fields.length < 6) return null;
-  const ts = parseEastmoneyKlineTimestamp(fields[0]);
+  const ts = parseEastmoneyKlineTimestamp(fields[0], useCloseTimeForDateOnly);
   const open = toFiniteNumber(fields[1]);
   const close = toFiniteNumber(fields[2]);
   const high = toFiniteNumber(fields[3]);
@@ -217,10 +219,11 @@ async function fetchAShareMarketSnapshot(
 
   const rows = (data as { data?: { klines?: unknown[] } })?.data?.klines;
   if (!Array.isArray(rows) || !rows.length) return null;
+  const useCloseTimeForDateOnly = klt === "101" || klt === "102" || klt === "103";
 
   const points: OHLCVPoint[] = [];
   for (const row of rows) {
-    const point = parseEastmoneyKlineRow(String(row ?? ""));
+    const point = parseEastmoneyKlineRow(String(row ?? ""), useCloseTimeForDateOnly);
     if (point) points.push(point);
   }
   if (!points.length) return null;
