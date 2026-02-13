@@ -992,6 +992,9 @@ export function AnalysisDashboard({
                 <a className="hero-link-button" href="/drift">
                   <span>漂移看板</span>
                 </a>
+                <a className="hero-link-button" href="/source-health">
+                  <span>数据源健康</span>
+                </a>
               </div>
               <div className="hero-flow">
                 <h2>数据流图</h2>

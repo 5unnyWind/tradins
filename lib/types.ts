@@ -272,3 +272,26 @@ export interface ConclusionDriftReport {
   metrics: ConclusionDriftMetrics;
   points: ConclusionDriftPoint[];
 }
+
+export type DataSourceKey = "yahoo" | "eastmoney" | "reddit";
+
+export interface DataSourceHealthItem {
+  source: DataSourceKey;
+  totalRequests: number;
+  successRequests: number;
+  failedRequests: number;
+  hitRatePct: number | null;
+  failureRatePct: number | null;
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
+  lastStatus: "success" | "failed" | "idle";
+  lastError: string | null;
+  lastLatencyMs: number | null;
+  lastAt: string | null;
+}
+
+export interface DataSourceHealthSnapshot {
+  generatedAt: string;
+  latencyWindowSize: number;
+  sources: DataSourceHealthItem[];
+}

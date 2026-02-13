@@ -99,6 +99,9 @@ export function BacktestDashboard() {
           <a className="hero-link-button" href="/drift">
             漂移看板
           </a>
+          <a className="hero-link-button" href="/source-health">
+            数据源健康
+          </a>
         </div>
       </section>
 

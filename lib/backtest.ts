@@ -2,6 +2,7 @@ import { eastmoneyKlineParams, resolveAShareSymbol } from "@/lib/data/a-share";
 import { toFiniteNumber } from "@/lib/data/common";
 import { listBacktestSignals } from "@/lib/db";
 import { normalizeTradableSymbol, resolveInstrumentContext } from "@/lib/instruments";
+import { fetchWithSourceHealth } from "@/lib/source-health";
 import type {
   BacktestEquityPoint,
   BacktestMetrics,
@@ -97,7 +98,7 @@ async function fetchAshareHistoricalPrices(symbol: string, lookbackDays: number)
     `&fields1=f1,f2,f3,f4,f5,f6` +
     `&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithSourceHealth("eastmoney", endpoint, {
     headers: EASTMONEY_HEADERS,
     cache: "no-store",
   });
@@ -135,7 +136,7 @@ async function fetchYahooHistoricalPrices(symbol: string, lookbackDays: number):
     instrument.marketSymbol,
   )}?range=${encodeURIComponent(range)}&interval=1d&includePrePost=false&events=div%2Csplits`;
 
-  const response = await fetch(endpoint, {
+  const response = await fetchWithSourceHealth("yahoo", endpoint, {
     headers: REQUEST_HEADERS,
     cache: "no-store",
   });

@@ -1,6 +1,7 @@
 import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { sentimentLabel, sentimentScore, topKeywords } from "@/lib/data/common";
 import { resolveInstrumentContext } from "@/lib/instruments";
+import { fetchWithSourceHealth } from "@/lib/source-health";
 import type { NewsItem, NewsSnapshot } from "@/lib/types";
 
 function toISO(ts: unknown): string | null {
@@ -28,7 +29,7 @@ async function fetchAShareAnnouncementNews(symbol: string, limit: number): Promi
     `https://np-anotice-stock.eastmoney.com/api/security/ann?` +
     `page_size=${Math.max(1, limit)}` +
     `&page_index=1&ann_type=A&stock_list=${encodeURIComponent(ashare.code)}`;
-  const response = await fetch(endpoint, {
+  const response = await fetchWithSourceHealth("eastmoney", endpoint, {
     headers: {
       "User-Agent": "tradins-next/0.1",
       Referer: "https://data.eastmoney.com/",
@@ -106,7 +107,7 @@ export async function fetchNewsSnapshot(symbol: string, limit = 12): Promise<New
   const endpoint = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
     sourceSymbol,
   )}&newsCount=${Math.max(1, limit)}&quotesCount=0`;
-  const response = await fetch(endpoint, {
+  const response = await fetchWithSourceHealth("yahoo", endpoint, {
     headers: { "User-Agent": "tradins-next/0.1" },
     cache: "no-store",
   });

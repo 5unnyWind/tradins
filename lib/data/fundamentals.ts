@@ -1,7 +1,8 @@
 import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { toFiniteNumber } from "@/lib/data/common";
 import { resolveInstrumentContext } from "@/lib/instruments";
-import type { FundamentalsSnapshot } from "@/lib/types";
+import { fetchWithSourceHealth } from "@/lib/source-health";
+import type { DataSourceKey, FundamentalsSnapshot } from "@/lib/types";
 
 const REQUEST_HEADERS = { "User-Agent": "tradins-next/0.1" } as const;
 const EASTMONEY_HEADERS = {
@@ -238,9 +239,13 @@ function emptySnapshot(symbol: string, error?: string): FundamentalsSnapshot {
   };
 }
 
-async function fetchJson(url: string, headers: Record<string, string> = REQUEST_HEADERS): Promise<JsonFetchResult> {
+async function fetchJson(
+  url: string,
+  source: DataSourceKey,
+  headers: Record<string, string> = REQUEST_HEADERS,
+): Promise<JsonFetchResult> {
   try {
-    const response = await fetch(url, {
+    const response = await fetchWithSourceHealth(source, url, {
       headers,
       cache: "no-store",
     });
@@ -519,11 +524,11 @@ async function fetchAShareFundamentalSnapshot(symbol: string): Promise<Fundament
     `&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61`;
 
   const [zyzbRes, balanceRes, incomeRes, orgRes, closeRes] = await Promise.all([
-    fetchJson(zyzbEndpoint, EASTMONEY_HEADERS),
-    fetchJson(balanceEndpoint, EASTMONEY_HEADERS),
-    fetchJson(incomeEndpoint, EASTMONEY_HEADERS),
-    fetchJson(orgEndpoint, EASTMONEY_HEADERS),
-    fetchJson(closeEndpoint, EASTMONEY_HEADERS),
+    fetchJson(zyzbEndpoint, "eastmoney", EASTMONEY_HEADERS),
+    fetchJson(balanceEndpoint, "eastmoney", EASTMONEY_HEADERS),
+    fetchJson(incomeEndpoint, "eastmoney", EASTMONEY_HEADERS),
+    fetchJson(orgEndpoint, "eastmoney", EASTMONEY_HEADERS),
+    fetchJson(closeEndpoint, "eastmoney", EASTMONEY_HEADERS),
   ]);
 
   const zyzbRows = asRecord(zyzbRes.data).data;
@@ -824,7 +829,7 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     lookupSymbol,
   )}?modules=${encodeURIComponent(modules)}`;
 
-  const primary = await fetchJson(endpoint);
+  const primary = await fetchJson(endpoint, "yahoo");
   const primaryReason = parseYahooError(primary.data);
   if (primary.ok) {
     const parsed = fromQuoteSummary(symbol, primary.data);
@@ -849,9 +854,9 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
   const quoteEndpoint = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(lookupSymbol)}`;
 
   const [quoteRes, chartRes, searchRes] = await Promise.all([
-    fetchJson(quoteEndpoint),
-    fetchJson(chartEndpoint),
-    fetchJson(searchEndpoint),
+    fetchJson(quoteEndpoint, "yahoo"),
+    fetchJson(chartEndpoint, "yahoo"),
+    fetchJson(searchEndpoint, "yahoo"),
   ]);
 
   const quoteBackup = toQuoteV7BackupSnapshot(symbol, lookupSymbol, quoteRes, chartRes, searchRes);
@@ -880,8 +885,8 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
   )}`;
 
   const [timeseriesRes, insightsRes] = await Promise.all([
-    fetchJson(timeseriesEndpoint),
-    fetchJson(insightsEndpoint),
+    fetchJson(timeseriesEndpoint, "yahoo"),
+    fetchJson(insightsEndpoint, "yahoo"),
   ]);
 
   const fallback = toFallbackSnapshot(

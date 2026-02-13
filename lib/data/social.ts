@@ -1,6 +1,7 @@
 import { sentimentLabel, sentimentScore, topKeywords } from "@/lib/data/common";
 import { resolveAShareSymbol } from "@/lib/data/a-share";
 import { resolveInstrumentContext } from "@/lib/instruments";
+import { fetchWithSourceHealth } from "@/lib/source-health";
 import type { SocialItem, SocialSnapshot } from "@/lib/types";
 
 const HEADERS: Record<string, string> = {
@@ -44,7 +45,7 @@ function clipText(value: unknown, maxLength = MAX_GUBA_TEXT_LENGTH): string {
 
 async function fetchReddit(symbol: string, limit: number): Promise<SocialItem[]> {
   const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(symbol)}&sort=new&t=day&limit=${limit}`;
-  const resp = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  const resp = await fetchWithSourceHealth("reddit", url, { headers: HEADERS, cache: "no-store" });
   if (!resp.ok) {
     if (resp.status === 403 || resp.status === 429) return [];
     throw new Error(`Reddit API ${resp.status}`);
@@ -99,7 +100,7 @@ async function fetchAshareGuba(symbol: string, limit: number): Promise<SocialIte
   if (!ashare) return [];
 
   const url = `https://guba.eastmoney.com/list,${encodeURIComponent(ashare.code)}.html`;
-  const resp = await fetch(url, { headers: EASTMONEY_HEADERS, cache: "no-store" });
+  const resp = await fetchWithSourceHealth("eastmoney", url, { headers: EASTMONEY_HEADERS, cache: "no-store" });
   if (!resp.ok) throw new Error(`Eastmoney Guba ${resp.status}`);
   const html = await resp.text();
 
