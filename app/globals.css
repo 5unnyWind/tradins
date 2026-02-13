@@ -104,7 +104,7 @@ h3 {
 }
 
 .records-sidebar-header h2 {
-  font-size: clamp(24px, 2.8vw, 34px);
+  font-size: clamp(22px, 2.4vw, 30px);
   line-height: 1.05;
 }
 
@@ -450,6 +450,10 @@ button.quick-nav-pill:hover:not(:disabled) {
   appearance: none;
   -webkit-appearance: none;
   touch-action: pan-y;
+}
+
+.record-item-date-separator {
+  margin-top: 10px;
 }
 
 .record-item-main {
@@ -925,7 +929,7 @@ button.record-item:hover:not(:disabled) {
   }
 
   .records-sidebar-header h2 {
-    font-size: 19px;
+    font-size: 18px;
     line-height: 1.12;
   }
 
