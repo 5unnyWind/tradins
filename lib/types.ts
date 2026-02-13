@@ -70,7 +70,7 @@ export interface NewsSnapshot {
 }
 
 export interface SocialItem {
-  source: "reddit" | "stocktwits";
+  source: "reddit" | "stocktwits" | "eastmoney-guba";
   title: string;
   text: string;
   score: number;
