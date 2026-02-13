@@ -187,8 +187,32 @@ ${result.riskReports.judge}
 }
 
 export function extractRecommendation(markdown: string): string | null {
-  const hit = markdown.match(/(买入|观望|减仓|卖出)/);
-  return hit ? hit[1] : null;
+  const text = markdown.replace(/\r/g, "");
+  const recommendationPattern = /(买入|观望|减仓|卖出)/u;
+  const sectionPattern = /##\s*最终投资建议(?!（开头）|（末尾）)[^\n]*\n([\s\S]{0,240})/gu;
+  const sectionMatches = [...text.matchAll(sectionPattern)];
+  for (let i = sectionMatches.length - 1; i >= 0; i -= 1) {
+    const body = sectionMatches[i]?.[1];
+    if (!body) continue;
+    const hit = body.match(recommendationPattern);
+    if (hit?.[1]) return hit[1];
+  }
+
+  const advicePattern = /建议[:：]\s*`?(买入|观望|减仓|卖出)`?/gu;
+  const adviceMatches = [...text.matchAll(advicePattern)];
+  if (adviceMatches.length) {
+    const last = adviceMatches.at(-1);
+    if (last?.[1]) return last[1];
+  }
+
+  const keywordPattern = /(买入|观望|减仓|卖出)/gu;
+  const keywordMatches = [...text.matchAll(keywordPattern)];
+  if (keywordMatches.length) {
+    const last = keywordMatches.at(-1);
+    if (last?.[1]) return last[1];
+  }
+
+  return null;
 }
 
 export async function runTradinsAnalysis(
