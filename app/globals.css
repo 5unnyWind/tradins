@@ -231,6 +231,32 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   margin-top: 12px !important;
 }
 
+.hero-actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.hero-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid #2f4d67;
+  color: var(--ink);
+  text-decoration: none;
+  background: linear-gradient(132deg, #113147, #153850);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.hero-link-button:hover {
+  filter: brightness(1.07);
+}
+
 .hero-flow {
   margin-top: 14px;
   padding-top: 10px;
@@ -1066,6 +1092,10 @@ button.record-item:hover:not(:disabled) {
 
   .hero-copy p {
     line-height: 1.6;
+  }
+
+  .hero-link-button {
+    min-height: 40px;
   }
 
   label {

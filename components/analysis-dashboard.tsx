@@ -32,6 +32,7 @@ const fetcher = async (url: string) => {
 };
 
 const RECORD_PAGE_SIZE = 10;
+const REPO_URL = "https://github.com/5unnyWind/tradins";
 const FLOW_GRAPH_MERMAID = [
   "graph TD",
   "  MarketAnalyst --> BullResearcher",
@@ -970,6 +971,11 @@ export function AnalysisDashboard({
               <p className="storage-tag">
                 当前存储: <strong>{storageMode}</strong>
               </p>
+              <div className="hero-actions">
+                <a className="hero-link-button" href={REPO_URL} target="_blank" rel="noreferrer">
+                  GitHub 仓库
+                </a>
+              </div>
               <div className="hero-flow">
                 <h2>数据流图</h2>
                 <MermaidView code={FLOW_GRAPH_MERMAID} />
