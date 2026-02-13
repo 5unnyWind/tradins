@@ -10,27 +10,41 @@ const noStoreHeaders = {
   Pragma: "no-cache",
 };
 
-function isAuthorized(request: Request): boolean {
-  const requiredToken = (process.env.SCHEDULER_RUN_TOKEN ?? "").trim();
-  if (!requiredToken) return false;
+function resolveAllowedTokens(): string[] {
+  const schedulerToken = (process.env.SCHEDULER_RUN_TOKEN ?? "").trim();
+  const cronSecret = (process.env.CRON_SECRET ?? "").trim();
+  return [schedulerToken, cronSecret].filter((token) => token.length > 0);
+}
+
+function isAuthorized(request: Request, allowedTokens: string[]): boolean {
+  if (!allowedTokens.length) return false;
   const headerToken = request.headers.get("x-scheduler-token")?.trim();
-  if (headerToken && headerToken === requiredToken) return true;
+  if (headerToken && allowedTokens.includes(headerToken)) return true;
   const authHeader = request.headers.get("authorization") ?? "";
   if (authHeader.startsWith("Bearer ")) {
     const bearer = authHeader.slice("Bearer ".length).trim();
-    if (bearer === requiredToken) return true;
+    if (allowedTokens.includes(bearer)) return true;
   }
   return false;
 }
 
-export async function POST(request: Request) {
-  if (!(process.env.SCHEDULER_RUN_TOKEN ?? "").trim()) {
+function parseLimit(request: Request): number {
+  const url = new URL(request.url);
+  const parsedLimit = Number(url.searchParams.get("limit") ?? "3");
+  return Number.isFinite(parsedLimit)
+    ? Math.max(1, Math.min(10, Math.floor(parsedLimit)))
+    : 3;
+}
+
+async function runScheduler(request: Request) {
+  const allowedTokens = resolveAllowedTokens();
+  if (!allowedTokens.length) {
     return NextResponse.json(
-      { ok: false, error: "Missing SCHEDULER_RUN_TOKEN." },
+      { ok: false, error: "Missing scheduler token. Set SCHEDULER_RUN_TOKEN or CRON_SECRET." },
       { status: 503, headers: noStoreHeaders },
     );
   }
-  if (!isAuthorized(request)) {
+  if (!isAuthorized(request, allowedTokens)) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized scheduler runner token." },
       { status: 401, headers: noStoreHeaders },
@@ -38,11 +52,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const url = new URL(request.url);
-    const parsedLimit = Number(url.searchParams.get("limit") ?? "3");
-    const limit = Number.isFinite(parsedLimit)
-      ? Math.max(1, Math.min(10, Math.floor(parsedLimit)))
-      : 3;
+    const limit = parseLimit(request);
     const results = await runDueSchedulerTasks(limit);
     return NextResponse.json(
       { ok: true, count: results.length, results },
@@ -55,4 +65,12 @@ export async function POST(request: Request) {
       { status: 500, headers: noStoreHeaders },
     );
   }
+}
+
+export async function GET(request: Request) {
+  return runScheduler(request);
+}
+
+export async function POST(request: Request) {
+  return runScheduler(request);
 }

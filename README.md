@@ -71,8 +71,11 @@ npm run dev
 
 可选配置自动触发（例如 Vercel Cron）：
 
-- `POST /api/scheduler/run`
-- 鉴权方式：`x-scheduler-token` 或 `Authorization: Bearer <SCHEDULER_RUN_TOKEN>`
+- `GET /api/scheduler/run`（Vercel Cron 默认 GET）
+- 也兼容 `POST /api/scheduler/run`
+- 鉴权方式：
+  - 自定义调用：`x-scheduler-token` 或 `Authorization: Bearer <SCHEDULER_RUN_TOKEN>`
+  - Vercel Cron：设置 `CRON_SECRET`，平台会自动携带 `Authorization: Bearer <CRON_SECRET>`
 
 ## 你会在页面看到什么
 
