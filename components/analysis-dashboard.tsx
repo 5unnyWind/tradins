@@ -89,6 +89,18 @@ function shorten(text: string, maxLength = 220): string {
   return `${text.slice(0, maxLength).trimEnd()}...`;
 }
 
+function formatRecordTimestamp(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function buildStockIntro(result: AnalysisResult): string {
   const profile = asRecord(asRecord(result.stageBundle.fundamentals.statements).profile);
   const symbolLabel = firstText(profile.securityCode, profile.secuCode, result.symbol) ?? result.symbol;
@@ -676,15 +688,18 @@ export function AnalysisDashboard({
                   );
                 }}
               >
-                <div>
-                  <strong>{record.symbol}</strong>
-                  <span>
+                <div className="record-item-main">
+                  <div className="record-item-symbol-row">
+                    <strong>{record.symbol}</strong>
+                    <small className="record-item-id">#{record.id}</small>
+                  </div>
+                  <span className="record-item-sub">
                     {record.analysisMode} · {record.debateRounds} 轮
                   </span>
                 </div>
-                <div>
+                <div className="record-item-side">
                   <em>{record.recommendation ?? "-"}</em>
-                  <small>{new Date(record.createdAt).toLocaleString()}</small>
+                  <small>{formatRecordTimestamp(record.createdAt)}</small>
                 </div>
               </button>
             ))}
