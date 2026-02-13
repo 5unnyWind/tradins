@@ -2,7 +2,9 @@
 
 Tradins 是一个以多智能体协作为核心的金融分析工作台。它不是“单模型一次性输出”，而是把分析拆成可追踪的协作链路，并将每个阶段实时展示。
 
-## 多智能体流程核心亮点
+![Tradins Dashboard](public/readme-dashboard.png)
+
+## 多智能体流程核心
 
 - 并行采集 + 并行研判：
   - 市场、基本面、新闻、舆情先并行采集
@@ -18,13 +20,6 @@ Tradins 是一个以多智能体协作为核心的金融分析工作台。它不
 - 全程流式可见：
   - 分析进度、阶段产物、市场快照按流程实时出现，不必等全链路完成
 
-## API
-
-- `POST /api/analyze/stream`：流式分析接口（SSE，推荐）
-- `POST /api/analyze`：同步分析接口（非流式）
-- `GET /api/records`：获取分析记录列表（支持 `limit`、`cursor`）
-- `GET /api/records/:id`：获取单条分析记录
-- `GET /api/health`：健康检查
 
 ## 本地启动
 
