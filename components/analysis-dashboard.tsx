@@ -293,16 +293,16 @@ type RenderDebateTurn = {
 
 type ArtifactUpdatePayload =
   | {
-      artifactType: "snapshot";
-      marketSnapshot: MarketSnapshot;
-    }
+    artifactType: "snapshot";
+    marketSnapshot: MarketSnapshot;
+  }
   | {
-      artifactType: TextArtifactType;
-      markdown: string;
-      key?: AnalyzeArtifactPayload["key"];
-      roundId?: number;
-      side?: AnalyzeArtifactPayload["side"];
-    };
+    artifactType: TextArtifactType;
+    markdown: string;
+    key?: AnalyzeArtifactPayload["key"];
+    roundId?: number;
+    side?: AnalyzeArtifactPayload["side"];
+  };
 
 type QuickJumpTarget = {
   id: string;
@@ -460,7 +460,7 @@ async function readErrorMessage(response: Response): Promise<string> {
   try {
     const parsed = JSON.parse(raw) as { error?: string };
     if (parsed.error) return parsed.error;
-  } catch {}
+  } catch { }
   return raw;
 }
 
@@ -929,7 +929,7 @@ export function AnalysisDashboard({
                   inputMode="text"
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="AAPL / 0700.HK / 600519.SS / 000001.SZ"
+                  placeholder="AAPL / 688256 / 0700.HK / 600519.SS"
                 />
               </label>
               <label>
