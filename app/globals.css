@@ -507,6 +507,13 @@ button.record-item:hover:not(:disabled) {
   padding: 8px 0;
 }
 
+.snapshot-time {
+  margin: 4px 0 10px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .mermaid-box {
   background: var(--surface-1);
   border: 1px solid var(--line);

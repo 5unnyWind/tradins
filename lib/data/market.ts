@@ -132,10 +132,17 @@ function emptyMarketSnapshot(
     period,
     interval,
     points: 0,
+    snapshotAt: null,
     technicals: emptyTechnicals(),
     recentBars: {},
     error,
   };
+}
+
+function latestSnapshotAt(points: OHLCVPoint[]): string | null {
+  const latestTs = points.at(-1)?.ts;
+  if (!Number.isFinite(latestTs)) return null;
+  return new Date((latestTs as number) * 1000).toISOString();
 }
 
 function parseEastmoneyKlineTimestamp(rawDate: string): number | null {
@@ -237,6 +244,7 @@ async function fetchAShareMarketSnapshot(
     period,
     interval,
     points: points.length,
+    snapshotAt: latestSnapshotAt(points),
     technicals,
     recentBars,
   };
@@ -356,6 +364,7 @@ export async function fetchMarketSnapshot(symbol: string, period = "6mo", interv
     period,
     interval,
     points: points.length,
+    snapshotAt: latestSnapshotAt(points),
     technicals,
     recentBars,
   };

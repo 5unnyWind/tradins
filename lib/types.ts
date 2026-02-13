@@ -33,6 +33,7 @@ export interface MarketSnapshot {
   period: string;
   interval: string;
   points: number;
+  snapshotAt?: string | null;
   technicals: TechnicalSnapshot;
   recentBars: Record<
     string,

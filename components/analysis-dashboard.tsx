@@ -101,6 +101,46 @@ function formatRecordTimestamp(value: string): string {
   }).format(date);
 }
 
+function formatUtcOffset(date: Date): string {
+  const minutes = -date.getTimezoneOffset();
+  const sign = minutes >= 0 ? "+" : "-";
+  const abs = Math.abs(minutes);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `UTC${sign}${hh}:${mm}`;
+}
+
+function resolveSnapshotTimestamp(snapshot: MarketSnapshot): string | null {
+  if (typeof snapshot.snapshotAt === "string" && snapshot.snapshotAt.trim()) {
+    return snapshot.snapshotAt.trim();
+  }
+  const latestBarKey = Object.keys(snapshot.recentBars)
+    .sort((a, b) => a.localeCompare(b))
+    .at(-1);
+  if (!latestBarKey) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(latestBarKey)) {
+    return `${latestBarKey}T00:00:00.000Z`;
+  }
+  return latestBarKey;
+}
+
+function formatSnapshotTimestamp(snapshot: MarketSnapshot): string {
+  const raw = resolveSnapshotTimestamp(snapshot);
+  if (!raw) return "N/A";
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return raw;
+  const label = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(date);
+  return `${label} (${formatUtcOffset(date)})`;
+}
+
 function buildStockIntro(result: AnalysisResult): string {
   const profile = asRecord(asRecord(result.stageBundle.fundamentals.statements).profile);
   const symbolLabel = firstText(profile.securityCode, profile.secuCode, result.symbol) ?? result.symbol;
@@ -260,6 +300,7 @@ function toMarketSnapshot(value: unknown): MarketSnapshot | null {
     period: snapshot.period,
     interval: snapshot.interval,
     points: Number.isFinite(Number(snapshot.points)) ? Number(snapshot.points) : 0,
+    snapshotAt: typeof snapshot.snapshotAt === "string" ? snapshot.snapshotAt : null,
     technicals: snapshot.technicals as MarketSnapshot["technicals"],
     recentBars,
     error: typeof snapshot.error === "string" ? snapshot.error : undefined,
@@ -454,6 +495,11 @@ export function AnalysisDashboard({
     if (displayedMarketSnapshot) return buildStreamStockIntro(displayedMarketSnapshot);
     return null;
   }, [displayedMarketSnapshot, result]);
+
+  const snapshotTimeLabel = useMemo(() => {
+    if (!displayedMarketSnapshot) return null;
+    return formatSnapshotTimestamp(displayedMarketSnapshot);
+  }, [displayedMarketSnapshot]);
 
   const streamDebates = useMemo<StreamDebateTurn[]>(() => {
     return Object.entries(streamCards.debates)
@@ -893,6 +939,7 @@ export function AnalysisDashboard({
               <section className="grid cols-2">
                 <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
+                  {snapshotTimeLabel ? <p className="snapshot-time">快照时间：{snapshotTimeLabel}</p> : null}
                   {displayedMarketSnapshot ? (
                     <>
                       {stockIntro ? (
