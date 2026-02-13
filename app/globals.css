@@ -794,6 +794,59 @@ button.record-item:hover:not(:disabled) {
   padding: 1px 6px;
 }
 
+.backtest-shell {
+  width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+}
+
+.backtest-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.backtest-head h1 {
+  margin: 8px 0 10px;
+  font-size: clamp(30px, 3.8vw, 42px);
+  line-height: 1.05;
+}
+
+.backtest-muted {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.65;
+}
+
+.backtest-form {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.backtest-trade-list {
+  display: grid;
+  gap: 8px;
+}
+
+.backtest-trade-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.backtest-trade-item p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.backtest-trade-item strong {
+  color: var(--ink);
+}
+
 .scheduler-shell {
   width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   margin: calc(16px + env(safe-area-inset-top)) auto calc(28px + env(safe-area-inset-bottom));
@@ -966,6 +1019,10 @@ button.record-item:hover:not(:disabled) {
 }
 
 @media (max-width: 1080px) {
+  .backtest-head {
+    flex-direction: column;
+  }
+
   .scheduler-layout {
     grid-template-columns: 1fr;
   }
@@ -1012,6 +1069,15 @@ button.record-item:hover:not(:disabled) {
 }
 
 @media (max-width: 768px) {
+  .backtest-shell {
+    width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    gap: 10px;
+  }
+
+  .backtest-head h1 {
+    font-size: clamp(24px, 8vw, 34px);
+  }
+
   .scheduler-shell {
     width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
     gap: 10px;
@@ -1200,6 +1266,10 @@ button.record-item:hover:not(:disabled) {
 }
 
 @media (max-width: 520px) {
+  .backtest-shell {
+    width: min(100%, calc(100vw - 12px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  }
+
   .scheduler-shell {
     width: min(100%, calc(100vw - 12px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   }

@@ -986,6 +986,9 @@ export function AnalysisDashboard({
                   </svg>
                   <span>GitHub 仓库</span>
                 </a>
+                <a className="hero-link-button" href="/backtest">
+                  <span>回测模块</span>
+                </a>
               </div>
               <div className="hero-flow">
                 <h2>数据流图</h2>

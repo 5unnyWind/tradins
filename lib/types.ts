@@ -197,3 +197,50 @@ export interface SchedulerTaskUpdateInput {
   intervalMinutes?: number;
   enabled?: boolean;
 }
+
+export interface BacktestSignal {
+  id: number;
+  symbol: string;
+  recommendation: InvestmentRecommendation | null;
+  createdAt: string;
+}
+
+export interface BacktestTrade {
+  startDate: string;
+  endDate: string;
+  exposure: number;
+  returnPct: number;
+  days: number;
+}
+
+export interface BacktestEquityPoint {
+  date: string;
+  strategyEquity: number;
+  benchmarkEquity: number;
+  exposure: number;
+}
+
+export interface BacktestMetrics {
+  totalReturnPct: number;
+  annualizedReturnPct: number | null;
+  benchmarkReturnPct: number;
+  maxDrawdownPct: number;
+  sharpeRatio: number | null;
+  annualizedVolatilityPct: number | null;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number | null;
+}
+
+export interface BacktestReport {
+  symbol: string;
+  lookbackDays: number;
+  rangeStart: string;
+  rangeEnd: string;
+  signalCount: number;
+  signalsUsed: number;
+  metrics: BacktestMetrics;
+  equityCurve: BacktestEquityPoint[];
+  trades: BacktestTrade[];
+}

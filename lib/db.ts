@@ -1,5 +1,5 @@
 import { resolveFinalRecommendation } from "@/lib/engine";
-import type { AnalysisInput, AnalysisRecordMeta, AnalysisResult } from "@/lib/types";
+import type { AnalysisInput, AnalysisRecordMeta, AnalysisResult, BacktestSignal } from "@/lib/types";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
@@ -175,6 +175,65 @@ export async function listRecords(limit = 20, cursor: number | null = null): Pro
   }
 
   return collected.slice(0, safeLimit);
+}
+
+export async function listBacktestSignals(
+  symbol: string,
+  fromIso: string,
+  limit = 2000,
+): Promise<BacktestSignal[]> {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const fromDate = new Date(fromIso);
+  if (!normalizedSymbol || !Number.isFinite(fromDate.getTime())) return [];
+
+  const safeLimit = Math.max(10, Math.min(5000, Math.floor(limit)));
+  const allowed = new Set(["买入", "观望", "减仓", "卖出"]);
+
+  if (!hasVercelPostgres) {
+    const records = await readLocalStore();
+    return records
+      .map((item) => item.meta)
+      .filter((meta) =>
+        meta.symbol.trim().toUpperCase() === normalizedSymbol &&
+        new Date(meta.createdAt).getTime() >= fromDate.getTime() &&
+        (meta.recommendation === null || allowed.has(meta.recommendation))
+      )
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(0, safeLimit)
+      .map((meta) => ({
+        id: meta.id,
+        symbol: meta.symbol,
+        recommendation: meta.recommendation as BacktestSignal["recommendation"],
+        createdAt: meta.createdAt,
+      }));
+  }
+
+  await ensureTable();
+  const sql = await getSqlTag();
+  const rows = (await sql`
+    SELECT id, symbol, recommendation, created_at
+    FROM analysis_records
+    WHERE UPPER(symbol) = ${normalizedSymbol}
+      AND created_at >= ${fromDate.toISOString()}
+    ORDER BY created_at ASC, id ASC
+    LIMIT ${safeLimit}
+  `) as {
+    rows: Array<{
+      id: number;
+      symbol: string;
+      recommendation: string | null;
+      created_at: string;
+    }>;
+  };
+
+  return rows.rows
+    .filter((row) => row.recommendation === null || allowed.has(row.recommendation))
+    .map((row) => ({
+      id: row.id,
+      symbol: row.symbol,
+      recommendation: row.recommendation as BacktestSignal["recommendation"],
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
 }
 
 export async function getRecord(
