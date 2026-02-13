@@ -246,6 +246,7 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   padding: 14px;
+  min-width: 0;
 }
 
 .form-panel {
@@ -352,7 +353,7 @@ select:focus-visible {
 }
 
 .cols-2 {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .panel-header {
