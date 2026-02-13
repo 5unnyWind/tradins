@@ -163,6 +163,48 @@ function parseYahooError(data: unknown): string | null {
   return candidate;
 }
 
+function classifySourceIssue(reason: string | null): string {
+  if (!reason) return "主数据源暂不可用";
+  const normalized = reason.toLowerCase();
+  if (
+    normalized.includes("invalid crumb") ||
+    normalized.includes("auth") ||
+    normalized.includes("unauthorized") ||
+    normalized.includes("forbidden")
+  ) {
+    return "数据源鉴权受限";
+  }
+  if (
+    normalized.includes("rate limit") ||
+    normalized.includes("too many requests") ||
+    normalized.includes("429")
+  ) {
+    return "数据源请求限流";
+  }
+  if (
+    normalized.includes("not found") ||
+    normalized.includes("no data") ||
+    normalized.includes("symbol")
+  ) {
+    return "标的数据可用性不足";
+  }
+  return "数据源接口异常";
+}
+
+function formatSourceStatus(status: Record<string, number>): string {
+  return Object.entries(status)
+    .filter(([, value]) => Number.isFinite(value))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+}
+
+function friendlyFundamentalsError(status: Record<string, number>, reason: string | null): string {
+  const issue = classifySourceIssue(reason);
+  const statusText = formatSourceStatus(status);
+  const suffix = statusText ? `（${statusText}）` : "";
+  return `基础面数据暂不完整：${issue}，系统已自动尝试备用信息源。建议降低基本面结论置信度，并结合市场、新闻与舆情信号综合判断${suffix}。`;
+}
+
 function emptySnapshot(symbol: string, error?: string): FundamentalsSnapshot {
   return {
     symbol,
@@ -278,6 +320,18 @@ function findSearchQuote(payload: unknown, symbol: string): Record<string, unkno
   return asRecord(quotes[0]);
 }
 
+function findQuoteV7(payload: unknown, symbol: string): Record<string, unknown> {
+  const rows = asRecord(asRecord(payload).quoteResponse).result;
+  if (!Array.isArray(rows) || !rows.length) return {};
+  const normalized = symbol.toUpperCase();
+  for (const row of rows) {
+    const quote = asRecord(row);
+    const quoteSymbol = asString(quote.symbol);
+    if (quoteSymbol && quoteSymbol.toUpperCase() === normalized) return quote;
+  }
+  return asRecord(rows[0]);
+}
+
 function fromQuoteSummary(symbol: string, payload: unknown): FundamentalsSnapshot | null {
   const result = asRecord(firstArrayItem(asRecord(asRecord(payload).quoteSummary).result));
   if (!Object.keys(result).length) return null;
@@ -339,6 +393,87 @@ function fromQuoteSummary(symbol: string, payload: unknown): FundamentalsSnapsho
       balanceSheetHistory: balance,
     },
   };
+}
+
+function toQuoteV7BackupSnapshot(
+  symbol: string,
+  lookupSymbol: string,
+  quoteRes: JsonFetchResult,
+  chartRes: JsonFetchResult,
+  searchRes: JsonFetchResult,
+): FundamentalsSnapshot | null {
+  const quote = findQuoteV7(quoteRes.data, lookupSymbol);
+  const chartMeta = asRecord(firstArrayItem(asRecord(asRecord(chartRes.data).chart).result)).meta;
+  const chart = asRecord(chartMeta);
+  const searchQuote = findSearchQuote(searchRes.data, lookupSymbol);
+
+  const marketPrice = firstNonNull(
+    rawNum(quote.regularMarketPrice),
+    rawNum(chart.regularMarketPrice),
+    rawNum(searchQuote.regularMarketPrice),
+    rawNum(chart.previousClose),
+  );
+  const marketCap = firstNonNull(rawNum(quote.marketCap), rawNum(searchQuote.marketCap));
+  const totalRevenue = firstNonNull(rawNum(quote.totalRevenue), rawNum(searchQuote.totalRevenue));
+  const netIncome = firstNonNull(rawNum(quote.netIncomeToCommon), rawNum(searchQuote.netIncomeToCommon));
+  const totalDebt = firstNonNull(rawNum(quote.totalDebt), rawNum(searchQuote.totalDebt));
+  const totalAssets = firstNonNull(rawNum(quote.totalAssets), rawNum(searchQuote.totalAssets));
+  const stockholdersEquity = firstNonNull(rawNum(quote.bookValue), rawNum(searchQuote.bookValue));
+
+  const snapshot: FundamentalsSnapshot = {
+    symbol,
+    valuation: {
+      marketCap,
+      trailingPE: firstNonNull(rawNum(quote.trailingPE), rawNum(searchQuote.trailingPE)),
+      forwardPE: firstNonNull(rawNum(quote.forwardPE), rawNum(searchQuote.forwardPE)),
+      priceToBook: firstNonNull(rawNum(quote.priceToBook), rawNum(searchQuote.priceToBook)),
+      enterpriseToRevenue: firstNonNull(rawNum(quote.enterpriseToRevenue), rawNum(searchQuote.enterpriseToRevenue)),
+      enterpriseToEbitda: firstNonNull(rawNum(quote.enterpriseToEbitda), rawNum(searchQuote.enterpriseToEbitda)),
+    },
+    growthProfitability: {
+      revenueGrowthYoy: firstNonNull(rawNum(quote.revenueGrowth), rawNum(searchQuote.revenueGrowth)),
+      netIncomeGrowthYoy: firstNonNull(rawNum(quote.earningsGrowth), rawNum(searchQuote.earningsGrowth)),
+      grossMargin: firstNonNull(rawNum(quote.grossMargins), rawNum(searchQuote.grossMargins)),
+      operatingMargin: firstNonNull(rawNum(quote.operatingMargins), rawNum(searchQuote.operatingMargins)),
+      profitMargin: firstNonNull(rawNum(quote.profitMargins), rawNum(searchQuote.profitMargins)),
+      roe: firstNonNull(rawNum(quote.returnOnEquity), rawNum(searchQuote.returnOnEquity)),
+      roa: firstNonNull(rawNum(quote.returnOnAssets), rawNum(searchQuote.returnOnAssets)),
+    },
+    financialHealth: {
+      totalDebt,
+      totalAssets,
+      debtToAssets: safeDiv(totalDebt, totalAssets),
+      currentRatio: firstNonNull(rawNum(quote.currentRatio), rawNum(searchQuote.currentRatio)),
+      quickRatio: firstNonNull(rawNum(quote.quickRatio), rawNum(searchQuote.quickRatio)),
+      freeCashflow: firstNonNull(rawNum(quote.freeCashflow), rawNum(searchQuote.freeCashflow)),
+    },
+    statements: {
+      source: "yahoo-quote-v7-backup",
+      endpointStatus: {
+        quote: quoteRes.status,
+        chart: chartRes.status,
+        search: searchRes.status,
+      },
+      profile: {
+        shortName: asString(quote.shortName) ?? asString(searchQuote.shortname),
+        longName: asString(quote.longName) ?? asString(searchQuote.longname) ?? asString(chart.longName),
+        sector: asString(quote.sector) ?? asString(searchQuote.sector),
+        industry: asString(quote.industry) ?? asString(searchQuote.industry),
+        exchange: asString(quote.fullExchangeName) ?? asString(searchQuote.exchange) ?? asString(chart.exchangeName),
+        currency: asString(quote.currency) ?? asString(chart.currency),
+      },
+      chart: {
+        regularMarketPrice: marketPrice,
+        previousClose: rawNum(quote.regularMarketPreviousClose) ?? rawNum(chart.previousClose),
+        fiftyTwoWeekHigh: rawNum(quote.fiftyTwoWeekHigh) ?? rawNum(chart.fiftyTwoWeekHigh),
+        fiftyTwoWeekLow: rawNum(quote.fiftyTwoWeekLow) ?? rawNum(chart.fiftyTwoWeekLow),
+        regularMarketVolume: rawNum(quote.regularMarketVolume) ?? rawNum(chart.regularMarketVolume),
+      },
+      quote,
+    },
+  };
+
+  return hasAnySignal(snapshot) ? snapshot : null;
 }
 
 function latestEastmoneyClose(payload: unknown): number | null {
@@ -491,17 +626,20 @@ function toFallbackSnapshot(
   timeseriesRes: JsonFetchResult,
   chartRes: JsonFetchResult,
   searchRes: JsonFetchResult,
+  quoteRes: JsonFetchResult,
   insightsRes: JsonFetchResult,
 ): FundamentalsSnapshot {
   const series = parseTimeseriesMap(timeseriesRes.data);
   const chartMeta = asRecord(firstArrayItem(asRecord(asRecord(chartRes.data).chart).result)).meta;
   const chart = asRecord(chartMeta);
   const searchQuote = findSearchQuote(searchRes.data, lookupSymbol);
+  const quoteV7 = findQuoteV7(quoteRes.data, lookupSymbol);
   const insights = asRecord(asRecord(insightsRes.data).finance).result;
   const insightsResult = asRecord(insights);
   const recommendation = asRecord(asRecord(insightsResult.instrumentInfo).recommendation);
 
   const marketPrice = firstNonNull(
+    rawNum(quoteV7.regularMarketPrice),
     rawNum(chart.regularMarketPrice),
     rawNum(searchQuote.regularMarketPrice),
     rawNum(chart.previousClose),
@@ -523,7 +661,7 @@ function toFallbackSnapshot(
   );
   const derivedMarketCap =
     marketPrice !== null && sharesOutstanding !== null ? marketPrice * sharesOutstanding : null;
-  const marketCap = firstNonNull(rawNum(searchQuote.marketCap), derivedMarketCap);
+  const marketCap = firstNonNull(rawNum(quoteV7.marketCap), rawNum(searchQuote.marketCap), derivedMarketCap);
 
   const totalRevenue = latestValue(series, "annualTotalRevenue", "quarterlyTotalRevenue");
   const totalRevenuePrev = previousValue(series, "annualTotalRevenue", "quarterlyTotalRevenue");
@@ -578,31 +716,43 @@ function toFallbackSnapshot(
     symbol,
     valuation: {
       marketCap,
-      trailingPE: firstNonNull(rawNum(searchQuote.trailingPE), safeDiv(marketPrice, trailingEps)),
-      forwardPE: firstNonNull(rawNum(searchQuote.forwardPE), safeDiv(marketPrice, forwardEps)),
-      priceToBook: firstNonNull(rawNum(searchQuote.priceToBook), safeDiv(marketCap, stockholdersEquity)),
+      trailingPE: firstNonNull(
+        rawNum(quoteV7.trailingPE),
+        rawNum(searchQuote.trailingPE),
+        safeDiv(marketPrice, trailingEps),
+      ),
+      forwardPE: firstNonNull(
+        rawNum(quoteV7.forwardPE),
+        rawNum(searchQuote.forwardPE),
+        safeDiv(marketPrice, forwardEps),
+      ),
+      priceToBook: firstNonNull(
+        rawNum(quoteV7.priceToBook),
+        rawNum(searchQuote.priceToBook),
+        safeDiv(marketCap, stockholdersEquity),
+      ),
       enterpriseToRevenue: safeDiv(enterpriseValue, totalRevenue),
       enterpriseToEbitda: safeDiv(enterpriseValue, ebitda),
     },
     growthProfitability: {
-      revenueGrowthYoy: yoy(totalRevenue, totalRevenuePrev),
-      netIncomeGrowthYoy: yoy(netIncome, netIncomePrev),
-      grossMargin: safeDiv(grossProfit, totalRevenue),
-      operatingMargin: safeDiv(operatingIncome, totalRevenue),
-      profitMargin: safeDiv(netIncome, totalRevenue),
-      roe: safeDiv(netIncome, stockholdersEquity),
-      roa: safeDiv(netIncome, totalAssets),
+      revenueGrowthYoy: firstNonNull(rawNum(quoteV7.revenueGrowth), yoy(totalRevenue, totalRevenuePrev)),
+      netIncomeGrowthYoy: firstNonNull(rawNum(quoteV7.earningsGrowth), yoy(netIncome, netIncomePrev)),
+      grossMargin: firstNonNull(rawNum(quoteV7.grossMargins), safeDiv(grossProfit, totalRevenue)),
+      operatingMargin: firstNonNull(rawNum(quoteV7.operatingMargins), safeDiv(operatingIncome, totalRevenue)),
+      profitMargin: firstNonNull(rawNum(quoteV7.profitMargins), safeDiv(netIncome, totalRevenue)),
+      roe: firstNonNull(rawNum(quoteV7.returnOnEquity), safeDiv(netIncome, stockholdersEquity)),
+      roa: firstNonNull(rawNum(quoteV7.returnOnAssets), safeDiv(netIncome, totalAssets)),
     },
     financialHealth: {
-      totalDebt,
-      totalAssets,
-      debtToAssets: safeDiv(totalDebt, totalAssets),
-      currentRatio,
-      quickRatio,
-      freeCashflow: latestValue(series, "annualFreeCashFlow", "quarterlyFreeCashFlow"),
+      totalDebt: firstNonNull(rawNum(quoteV7.totalDebt), totalDebt),
+      totalAssets: firstNonNull(rawNum(quoteV7.totalAssets), totalAssets),
+      debtToAssets: safeDiv(firstNonNull(rawNum(quoteV7.totalDebt), totalDebt), firstNonNull(rawNum(quoteV7.totalAssets), totalAssets)),
+      currentRatio: firstNonNull(rawNum(quoteV7.currentRatio), currentRatio),
+      quickRatio: firstNonNull(rawNum(quoteV7.quickRatio), quickRatio),
+      freeCashflow: firstNonNull(rawNum(quoteV7.freeCashflow), latestValue(series, "annualFreeCashFlow", "quarterlyFreeCashFlow")),
     },
     statements: {
-      source: "yahoo-fallback",
+      source: "yahoo-fallback-mixed",
       quoteSummary: {
         status: quoteSummaryStatus,
         reason: quoteSummaryReason,
@@ -611,15 +761,16 @@ function toFallbackSnapshot(
         timeseries: timeseriesRes.status,
         chart: chartRes.status,
         search: searchRes.status,
+        quote: quoteRes.status,
         insights: insightsRes.status,
       },
       profile: {
-        shortName: asString(searchQuote.shortname),
+        shortName: asString(quoteV7.shortName) ?? asString(searchQuote.shortname),
         longName: asString(searchQuote.longname) ?? asString(chart.longName),
-        sector: asString(searchQuote.sector),
-        industry: asString(searchQuote.industry),
+        sector: asString(quoteV7.sector) ?? asString(searchQuote.sector),
+        industry: asString(quoteV7.industry) ?? asString(searchQuote.industry),
         exchange: asString(searchQuote.exchange) ?? asString(chart.exchangeName),
-        currency: asString(chart.currency),
+        currency: asString(quoteV7.currency) ?? asString(chart.currency),
       },
       recommendation: {
         rating: asString(recommendation.rating),
@@ -632,22 +783,23 @@ function toFallbackSnapshot(
         fiftyTwoWeekLow: rawNum(chart.fiftyTwoWeekLow),
         regularMarketVolume: rawNum(chart.regularMarketVolume),
       },
+      quoteV7: quoteV7,
       timeseries: seriesToObject(series),
     },
   };
 
   if (!hasAnySignal(snapshot)) {
-    const reasons = [
-      quoteSummaryStatus ? `quoteSummary=${quoteSummaryStatus}` : null,
-      quoteSummaryReason ? `reason=${quoteSummaryReason}` : null,
-      `timeseries=${timeseriesRes.status}`,
-      `chart=${chartRes.status}`,
-      `search=${searchRes.status}`,
-      `insights=${insightsRes.status}`,
-    ]
-      .filter(Boolean)
-      .join(", ");
-    snapshot.error = `Fundamentals data is limited (${reasons})`;
+    snapshot.error = friendlyFundamentalsError(
+      {
+        quoteSummary: quoteSummaryStatus,
+        timeseries: timeseriesRes.status,
+        chart: chartRes.status,
+        search: searchRes.status,
+        quote: quoteRes.status,
+        insights: insightsRes.status,
+      },
+      quoteSummaryReason,
+    );
   }
 
   return snapshot;
@@ -692,21 +844,43 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     }
   }
 
+  const chartEndpoint = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupSymbol)}`;
+  const searchEndpoint = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(lookupSymbol)}`;
+  const quoteEndpoint = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(lookupSymbol)}`;
+
+  const [quoteRes, chartRes, searchRes] = await Promise.all([
+    fetchJson(quoteEndpoint),
+    fetchJson(chartEndpoint),
+    fetchJson(searchEndpoint),
+  ]);
+
+  const quoteBackup = toQuoteV7BackupSnapshot(symbol, lookupSymbol, quoteRes, chartRes, searchRes);
+  if (quoteBackup && hasAnySignal(quoteBackup)) {
+    if (lookupSymbol !== symbol) {
+      quoteBackup.statements = {
+        ...quoteBackup.statements,
+        instrument: {
+          kind: instrument.kind,
+          displayName: instrument.displayName,
+          requestedSymbol: symbol,
+          dataSymbol: lookupSymbol,
+        },
+      };
+    }
+    return quoteBackup;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const period1 = now - 3600 * 24 * 365 * 10;
   const timeseriesEndpoint = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(
     lookupSymbol,
   )}?type=${encodeURIComponent(TIMESERIES_TYPES.join(","))}&period1=${period1}&period2=${now}`;
-  const chartEndpoint = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(lookupSymbol)}`;
-  const searchEndpoint = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(lookupSymbol)}`;
   const insightsEndpoint = `https://query2.finance.yahoo.com/ws/insights/v1/finance/insights?symbol=${encodeURIComponent(
     lookupSymbol,
   )}`;
 
-  const [timeseriesRes, chartRes, searchRes, insightsRes] = await Promise.all([
+  const [timeseriesRes, insightsRes] = await Promise.all([
     fetchJson(timeseriesEndpoint),
-    fetchJson(chartEndpoint),
-    fetchJson(searchEndpoint),
     fetchJson(insightsEndpoint),
   ]);
 
@@ -718,6 +892,7 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
     timeseriesRes,
     chartRes,
     searchRes,
+    quoteRes,
     insightsRes,
   );
 
@@ -734,7 +909,21 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
   }
 
   if (hasAnySignal(fallback)) return fallback;
-  return emptySnapshot(symbol, fallback.error ?? `Fundamentals API error: ${primary.status || 0}`);
+  return emptySnapshot(
+    symbol,
+    fallback.error ??
+      friendlyFundamentalsError(
+        {
+          quoteSummary: primary.status,
+          quote: quoteRes.status,
+          chart: chartRes.status,
+          search: searchRes.status,
+          timeseries: timeseriesRes.status,
+          insights: insightsRes.status,
+        },
+        primaryReason,
+      ),
+  );
 }
 
 function defaultKey(

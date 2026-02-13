@@ -89,6 +89,12 @@ npm run dev
 - 黄金：`GOLD` / `黄金`（映射到 `GC=F`，新闻/基本面代理符号 `GLD`）
 - 白银：`SILVER` / `白银`（映射到 `SI=F`，新闻/基本面代理符号 `SLV`）
 
+## 基础面数据备源策略
+
+- 主源：Yahoo `quoteSummary` / `timeseries` / `insights`
+- 备源：Yahoo `v7 quote`（用于在主源鉴权异常如 Invalid Crumb 时补齐关键估值字段）
+- 当基础面仍不完整时，会返回用户友好提示，并在后续分析中自动下调基本面结论置信度
+
 ## 部署到 Vercel
 
 1. 在 Vercel 创建项目并导入仓库

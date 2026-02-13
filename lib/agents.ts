@@ -78,6 +78,10 @@ export async function fundamentalsAnalyst(symbol: string, payload: Record<string
   const v = (payload.valuation ?? {}) as Record<string, unknown>;
   const g = (payload.growthProfitability ?? {}) as Record<string, unknown>;
   const h = (payload.financialHealth ?? {}) as Record<string, unknown>;
+  const sourceError = typeof payload.error === "string" ? payload.error.trim() : "";
+  const dataAvailabilityHint = sourceError
+    ? `\n数据可用性提示：${sourceError}\n请在“风险提示”中用用户友好表述说明“基础面数据暂不完整，已启用备源，结论置信度下调”，不要直接复述接口报错原文。`
+    : "";
   const fallback = `## 估值分析
 - PE(TTM/Forward): \`${fmtNum(v.trailingPE)} / ${fmtNum(v.forwardPE)}\`
 - PB: \`${fmtNum(v.priceToBook)}\`，EV/Revenue: \`${fmtNum(v.enterpriseToRevenue)}\`
@@ -97,7 +101,7 @@ export async function fundamentalsAnalyst(symbol: string, payload: Record<string
 - 关注: 增长持续性、现金流质量、估值回归。
 
 ## 风险提示
-- 估值与盈利兑现错配会放大波动。`;
+- 估值与盈利兑现错配会放大波动。${sourceError ? "\n- 基础面数据存在缺口，当前结论置信度应下调并结合其他维度交叉验证。" : ""}`;
   const markdown = await askWithFallback(
     "你是基本面分析师。输出中文 Markdown，重点是估值、增长、财务质量。",
     `请按以下章节输出报告：
@@ -111,7 +115,7 @@ export async function fundamentalsAnalyst(symbol: string, payload: Record<string
 数据:
 \`\`\`json
 ${jsonBlob(payload)}
-\`\`\``,
+\`\`\`${dataAvailabilityHint}`,
     fallback,
   );
   return { agent: "Fundamentals Analyst", role: "基本面", markdown, payload };
