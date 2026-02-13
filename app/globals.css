@@ -424,7 +424,8 @@ button.quick-nav-pill:hover:not(:disabled) {
 }
 
 .record-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
