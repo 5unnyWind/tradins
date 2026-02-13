@@ -353,6 +353,44 @@ ${calibrationMarkdown}
 `;
 }
 
+function normalizeRecommendationText(raw: string): InvestmentRecommendation | null {
+  const text = raw.replace(/\s+/g, "");
+  if (!text) return null;
+
+  if (/(卖出|清仓|全部退出|止损离场|立即离场|退出观望)/u.test(text)) return "卖出";
+  if (/(减仓|减持|降仓|降敞口|降低仓位|部分止盈|先降风险敞口)/u.test(text)) return "减仓";
+  if (/(观望|等待|暂不参与|暂不交易|持币观望|中性|先观察|不操作)/u.test(text)) return "观望";
+  if (/(买入|加仓|增持|建仓|介入|做多|低吸|分批吸纳)/u.test(text)) return "买入";
+  return null;
+}
+
+function extractRecommendationFromLabeledSection(text: string): InvestmentRecommendation | null {
+  const labeledLinePattern =
+    /(?:建议|风控建议|操作建议|结论|倾向|推荐)[:：]\s*`?([^\n`]{1,24})`?/gu;
+  const matches = [...text.matchAll(labeledLinePattern)];
+  for (let i = matches.length - 1; i >= 0; i -= 1) {
+    const candidate = matches[i]?.[1];
+    if (!candidate) continue;
+    const normalized = normalizeRecommendationText(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function extractRecommendationByHeuristic(text: string): InvestmentRecommendation | null {
+  const normalized = text.replace(/\s+/g, "");
+  if (!normalized) return null;
+
+  // 先看显式否定语义，避免把“不要买入”误识别成买入。
+  if (/(不建议|不宜|避免|不要|勿|不应).{0,6}(买入|加仓|增持|建仓|做多)/u.test(normalized)) {
+    return "观望";
+  }
+  if (/(不建议|不宜|避免|不要|勿|不应).{0,6}(卖出|清仓|止损离场)/u.test(normalized)) {
+    return "观望";
+  }
+  return normalizeRecommendationText(normalized);
+}
+
 export function extractRecommendation(markdown: string): InvestmentRecommendation | null {
   const text = markdown.replace(/\r/g, "");
   const recommendationPattern = /(买入|观望|减仓|卖出)/u;
@@ -363,6 +401,8 @@ export function extractRecommendation(markdown: string): InvestmentRecommendatio
     if (!body) continue;
     const hit = body.match(recommendationPattern);
     if (hit?.[1]) return hit[1] as InvestmentRecommendation;
+    const normalized = normalizeRecommendationText(body);
+    if (normalized) return normalized;
   }
 
   const advicePattern = /建议[:：]\s*`?(买入|观望|减仓|卖出)`?/gu;
@@ -372,6 +412,9 @@ export function extractRecommendation(markdown: string): InvestmentRecommendatio
     if (last?.[1]) return last[1] as InvestmentRecommendation;
   }
 
+  const fromLabeledSection = extractRecommendationFromLabeledSection(text);
+  if (fromLabeledSection) return fromLabeledSection;
+
   const keywordPattern = /(买入|观望|减仓|卖出)/gu;
   const keywordMatches = [...text.matchAll(keywordPattern)];
   if (keywordMatches.length) {
@@ -379,7 +422,7 @@ export function extractRecommendation(markdown: string): InvestmentRecommendatio
     if (last?.[1]) return last[1] as InvestmentRecommendation;
   }
 
-  return null;
+  return extractRecommendationByHeuristic(text);
 }
 
 export function resolveFinalRecommendation(result: AnalysisResult): InvestmentRecommendation | null {
