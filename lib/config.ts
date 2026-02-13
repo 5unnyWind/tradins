@@ -6,9 +6,28 @@ export interface LLMRuntimeConfig {
   model: string;
   temperature: number;
   maxTokens: number;
+  maxRetries: number;
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
+}
+
+function parseNumberEnv(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.trunc(value)));
 }
 
 export function getLLMConfig(): LLMRuntimeConfig {
+  const maxRetries = clampInt(parseNumberEnv(process.env.TRADINS_LLM_MAX_RETRIES, 2), 0, 8);
+  const retryBaseDelayMs = clampInt(parseNumberEnv(process.env.TRADINS_LLM_RETRY_BASE_MS, 400), 50, 10_000);
+  const retryMaxDelayMs = clampInt(
+    parseNumberEnv(process.env.TRADINS_LLM_RETRY_MAX_MS, 5_000),
+    retryBaseDelayMs,
+    60_000,
+  );
   return {
     baseUrl: process.env.TRADINS_BASE_URL ?? "https://ai.268.pw/v1",
     apiKey:
@@ -17,6 +36,9 @@ export function getLLMConfig(): LLMRuntimeConfig {
     model: process.env.TRADINS_MODEL ?? "claude-opus-4-6",
     temperature: Number(process.env.TRADINS_TEMPERATURE ?? "0.2"),
     maxTokens: Number(process.env.TRADINS_MAX_TOKENS ?? "1800"),
+    maxRetries,
+    retryBaseDelayMs,
+    retryMaxDelayMs,
   };
 }
 
