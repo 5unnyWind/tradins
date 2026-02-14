@@ -20,6 +20,7 @@ const SOURCE_LABEL: Record<DataSourceHealthItem["source"], string> = {
   eastmoney: "Eastmoney",
   reddit: "Reddit",
 };
+const TIMELINE_POINT_LIMIT = 12;
 
 function fmtNum(value: number | null, digits = 2): string {
   if (value === null || !Number.isFinite(value)) return "N/A";
@@ -41,6 +42,18 @@ function fmtTime(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
+function fmtTimelineTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
     hour12: false,
   }).format(date);
 }
@@ -90,6 +103,13 @@ export function SourceHealthDashboard() {
   }, [loadSnapshot]);
 
   const sources = useMemo(() => snapshot?.sources ?? [], [snapshot]);
+  const sourceSeriesMap = useMemo(() => {
+    const mapped = new Map<DataSourceHealthItem["source"], DataSourceHealthSnapshot["series"][number]["points"]>();
+    for (const series of snapshot?.series ?? []) {
+      mapped.set(series.source, series.points);
+    }
+    return mapped;
+  }, [snapshot]);
 
   return (
     <main className="shell source-health-shell">
@@ -127,29 +147,52 @@ export function SourceHealthDashboard() {
         <div className="panel-header">
           <h2>窗口信息</h2>
           <span>
-            样本窗口: {snapshot?.latencyWindowSize ?? 0} 次请求 / 更新时间: {fmtTime(snapshot?.generatedAt ?? null)}
+            样本窗口: {snapshot?.latencyWindowSize ?? 0} 次请求 / 时序窗口: {snapshot?.seriesWindowMinutes ?? 0} 分钟
+            / 粒度: {snapshot?.seriesBucketMinutes ?? 0} 分钟 / 更新时间: {fmtTime(snapshot?.generatedAt ?? null)}
           </span>
         </div>
 
         <div className="source-health-grid">
-          {sources.map((item) => (
-            <article className="source-health-card" key={item.source}>
-              <div className="source-health-card-head">
-                <h3>{SOURCE_LABEL[item.source]}</h3>
-                <span className={`source-health-badge ${statusClass(item.lastStatus)}`}>{item.lastStatus}</span>
-              </div>
-              <div className="source-health-metrics">
-                <p>请求数: {item.totalRequests}</p>
-                <p>命中率: {fmtRate(item.hitRatePct)}</p>
-                <p>失败率: {fmtRate(item.failureRatePct)}</p>
-                <p>平均延迟: {fmtNum(item.avgLatencyMs)} ms</p>
-                <p>P95 延迟: {fmtNum(item.p95LatencyMs)} ms</p>
-                <p>最近延迟: {fmtNum(item.lastLatencyMs)} ms</p>
-                <p>最近请求: {fmtTime(item.lastAt)}</p>
-              </div>
-              {item.lastError ? <p className="source-health-error">最近错误: {item.lastError}</p> : null}
-            </article>
-          ))}
+          {sources.map((item) => {
+            const timeline = sourceSeriesMap.get(item.source) ?? [];
+            const recentTimeline = timeline.slice(-TIMELINE_POINT_LIMIT);
+            return (
+              <article className="source-health-card" key={item.source}>
+                <div className="source-health-card-head">
+                  <h3>{SOURCE_LABEL[item.source]}</h3>
+                  <span className={`source-health-badge ${statusClass(item.lastStatus)}`}>{item.lastStatus}</span>
+                </div>
+                <div className="source-health-metrics">
+                  <p>请求数: {item.totalRequests}</p>
+                  <p>命中率: {fmtRate(item.hitRatePct)}</p>
+                  <p>失败率: {fmtRate(item.failureRatePct)}</p>
+                  <p>平均延迟: {fmtNum(item.avgLatencyMs)} ms</p>
+                  <p>P95 延迟: {fmtNum(item.p95LatencyMs)} ms</p>
+                  <p>最近延迟: {fmtNum(item.lastLatencyMs)} ms</p>
+                  <p>最近请求: {fmtTime(item.lastAt)}</p>
+                </div>
+                <div className="source-health-series">
+                  <p className="source-health-series-title">近 {recentTimeline.length} 个时序点</p>
+                  {recentTimeline.length ? (
+                    <ul className="source-health-series-list">
+                      {recentTimeline.map((point) => (
+                        <li key={`${item.source}-${point.at}`}>
+                          <span>{fmtTimelineTime(point.at)}</span>
+                          <span>请求 {point.requests}</span>
+                          <span>命中 {fmtRate(point.hitRatePct)}</span>
+                          <span>失败 {fmtRate(point.failureRatePct)}</span>
+                          <span>均延 {fmtNum(point.avgLatencyMs)} ms</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="source-health-muted">暂无时序数据。</p>
+                  )}
+                </div>
+                {item.lastError ? <p className="source-health-error">最近错误: {item.lastError}</p> : null}
+              </article>
+            );
+          })}
           {!sources.length ? <p className="source-health-muted">暂无统计数据。</p> : null}
         </div>
       </section>

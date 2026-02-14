@@ -290,8 +290,25 @@ export interface DataSourceHealthItem {
   lastAt: string | null;
 }
 
+export interface DataSourceHealthSeriesPoint {
+  at: string;
+  requests: number;
+  hitRatePct: number | null;
+  failureRatePct: number | null;
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
+}
+
+export interface DataSourceHealthSeries {
+  source: DataSourceKey;
+  points: DataSourceHealthSeriesPoint[];
+}
+
 export interface DataSourceHealthSnapshot {
   generatedAt: string;
   latencyWindowSize: number;
+  seriesWindowMinutes: number;
+  seriesBucketMinutes: number;
   sources: DataSourceHealthItem[];
+  series: DataSourceHealthSeries[];
 }

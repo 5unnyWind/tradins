@@ -17,10 +17,11 @@ const noStoreHeaders = {
 };
 
 export async function GET() {
+  const snapshot = await getSourceHealthSnapshot();
   return NextResponse.json(
     {
       ok: true,
-      snapshot: getSourceHealthSnapshot(),
+      snapshot,
     },
     { headers: noStoreHeaders },
   );
@@ -31,11 +32,12 @@ export async function POST(request: Request) {
   const action = url.searchParams.get("action") ?? "";
 
   if (action === "reset") {
-    resetSourceHealthSnapshot();
+    await resetSourceHealthSnapshot();
+    const snapshot = await getSourceHealthSnapshot();
     return NextResponse.json(
       {
         ok: true,
-        snapshot: getSourceHealthSnapshot(),
+        snapshot,
       },
       { headers: noStoreHeaders },
     );

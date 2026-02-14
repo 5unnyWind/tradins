@@ -1086,6 +1086,42 @@ button.record-item:hover:not(:disabled) {
   font-size: 12px;
 }
 
+.source-health-series {
+  display: grid;
+  gap: 6px;
+}
+
+.source-health-series-title {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.source-health-series-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(10, 18, 29, 0.68);
+  overflow: hidden;
+}
+
+.source-health-series-list li {
+  display: grid;
+  grid-template-columns: 90px repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px 8px;
+  font-size: 11px;
+  color: #c2d6eb;
+  border-bottom: 1px solid rgba(78, 109, 136, 0.26);
+}
+
+.source-health-series-list li:last-child {
+  border-bottom: 0;
+}
+
 .source-health-error {
   margin: 0;
   padding: 8px 9px;
@@ -1283,6 +1319,10 @@ button.record-item:hover:not(:disabled) {
 
   .source-health-grid {
     grid-template-columns: 1fr;
+  }
+
+  .source-health-series-list li {
+    grid-template-columns: 1fr 1fr;
   }
 
   .scheduler-layout {
