@@ -1025,7 +1025,7 @@ export function AnalysisDashboard({
                   maxLength={20}
                   value={symbol}
                   onChange={(e) => setSymbol(e.target.value)}
-                  placeholder="美股: AAPL / A股: 688256 / 加密: BTC / ETH / SOL / 黄金: GOLD / 白银: SILVER"
+                  placeholder="美股: AAPL / A股: 688256 / 黄金: GOLD / 白银: SILVER"
                 />
               </label>
               <label>

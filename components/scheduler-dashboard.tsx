@@ -366,7 +366,7 @@ export function SchedulerDashboard() {
                 maxLength={20}
                 value={symbol}
                 onChange={(event) => setSymbol(event.target.value)}
-                placeholder="美股: AAPL / A股: 688256 / 加密: BTC / ETH / SOL / 黄金: GOLD / 白银: SILVER"
+                placeholder="美股: AAPL / A股: 688256 / 黄金: GOLD / 白银: SILVER"
               />
             </label>
             <label>

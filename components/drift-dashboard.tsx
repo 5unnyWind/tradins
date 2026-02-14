@@ -130,7 +130,7 @@ export function DriftDashboard() {
             maxLength={20}
             value={symbol}
             onChange={(event) => setSymbol(event.target.value)}
-            placeholder="例如：AAPL / 600519.SS / BTC / ETH"
+            placeholder="例如：AAPL / 600519.SS / GOLD"
           />
         </label>
         <label>
