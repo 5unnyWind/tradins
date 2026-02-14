@@ -94,21 +94,42 @@ async function collectStageBundle(
   input: AnalysisInput,
   onMarketReady?: (market: StageBundle["market"]) => void | Promise<void>,
 ): Promise<StageBundle> {
-  const marketPromise = fetchMarketSnapshot(input.symbol, input.period, input.interval);
-  const fundamentalsPromise = fetchFundamentalSnapshot(input.symbol);
-  const newsPromise = fetchNewsSnapshot(input.symbol, 12);
-  const socialPromise = fetchSocialSnapshot(input.symbol, 30);
-
-  const market = await marketPromise;
+  const market = await fetchMarketSnapshot(input.symbol, input.period, input.interval);
+  const marketError = resolveMarketSnapshotError(market);
+  if (marketError) {
+    throw new Error(`市场快照获取失败，已中止后续分析：${marketError}`);
+  }
   if (onMarketReady) {
     await onMarketReady(market);
   }
   const [fundamentals, news, social] = await Promise.all([
-    fundamentalsPromise,
-    newsPromise,
-    socialPromise,
+    fetchFundamentalSnapshot(input.symbol),
+    fetchNewsSnapshot(input.symbol, 12),
+    fetchSocialSnapshot(input.symbol, 30),
   ]);
   return { market, fundamentals, news, social };
+}
+
+function resolveMarketSnapshotError(snapshot: StageBundle["market"]): string | null {
+  const reasons: string[] = [];
+  const points = Number(snapshot.points);
+  const hasPoints = Number.isFinite(points) && points > 0;
+  const price = Number(snapshot.technicals?.price);
+  const hasPrice = Number.isFinite(price);
+  const hasBars = Object.keys(snapshot.recentBars ?? {}).length > 0;
+
+  if (typeof snapshot.error === "string" && snapshot.error.trim()) {
+    reasons.push(snapshot.error.trim());
+  }
+  if (!hasPoints) {
+    reasons.push("未返回有效 K 线点位");
+  }
+  if (!hasPrice && !hasBars) {
+    reasons.push("缺少价格快照");
+  }
+
+  if (!reasons.length) return null;
+  return reasons.join("；");
 }
 
 function clampScore(value: number, min: number, max: number): number {
