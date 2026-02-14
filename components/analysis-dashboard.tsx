@@ -53,6 +53,92 @@ const FLOW_GRAPH_MERMAID = [
   "  NeutralAnalyst --> RiskJudge",
 ].join("\n");
 
+type SectionIconName =
+  | "market"
+  | "fundamentals"
+  | "news"
+  | "social"
+  | "bull"
+  | "bear"
+  | "risky"
+  | "safe"
+  | "neutral";
+
+function SectionTitle({ icon, label }: { icon: SectionIconName; label: string }) {
+  return (
+    <h3 className="card-title">
+      <span className={`title-icon title-icon-${icon}`} aria-hidden="true">
+        {renderSectionIcon(icon)}
+      </span>
+      <span>{label}</span>
+    </h3>
+  );
+}
+
+function renderSectionIcon(icon: SectionIconName) {
+  if (icon === "market") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M4 18h16v2H2V4h2v14Zm2-2 4.6-4.6 3 3L20 8l1.4 1.4-7.8 7.8-3-3L7.4 17.4 6 16Z" />
+      </svg>
+    );
+  }
+  if (icon === "fundamentals") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M4 3h2v18H4V3Zm7 6h2v12h-2V9Zm7-4h2v16h-2V5Z" />
+      </svg>
+    );
+  }
+  if (icon === "news") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M4 5h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5Zm2 3v2h5V8H6Zm0 4v2h12v-2H6Z" />
+      </svg>
+    );
+  }
+  if (icon === "social") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H9l-5 4v-4H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Zm2 5v2h7V9H6Zm0 4v2h11v-2H6Z" />
+      </svg>
+    );
+  }
+  if (icon === "bull") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M12 2 4 10h5v10h6V10h5L12 2Zm0 16V8.8l2.8 2.8 1.4-1.4L12 6 7.8 10.2l1.4 1.4L12 8.8V18Z" />
+      </svg>
+    );
+  }
+  if (icon === "bear") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="m12 22 8-8h-5V4H9v10H4l8 8Zm0-16v9.2l-2.8-2.8-1.4 1.4L12 18l4.2-4.2-1.4-1.4-2.8 2.8V6Z" />
+      </svg>
+    );
+  }
+  if (icon === "risky") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M12 2 1 21h22L12 2Zm1 14h-2v2h2v-2Zm0-6h-2v5h2V10Z" />
+      </svg>
+    );
+  }
+  if (icon === "safe") {
+    return (
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path fill="currentColor" d="M12 2 4 5v6c0 5.5 3.8 10.6 8 12 4.2-1.4 8-6.5 8-12V5l-8-3Zm-1 14-4-4 1.4-1.4L11 13.2l4.6-4.6L17 10l-6 6Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" focusable="false">
+      <path fill="currentColor" d="M7 5h2v14H7V5Zm8 0h2v14h-2V5Zm-5 2h4v2h-4V7Zm0 8h4v2h-4v-2Z" />
+    </svg>
+  );
+}
+
 function fmtNum(value: unknown, digits = 2): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return "N/A";
@@ -1148,7 +1234,7 @@ export function AnalysisDashboard({
                 <h2>四位分析师</h2>
                 <div className="card-grid">
                   <div className="card">
-                    <h3>📈 市场分析师</h3>
+                    <SectionTitle icon="market" label="市场分析师" />
                     {marketReportMarkdown ? (
                       <MarkdownView markdown={marketReportMarkdown} />
                     ) : (
@@ -1156,7 +1242,7 @@ export function AnalysisDashboard({
                     )}
                   </div>
                   <div className="card">
-                    <h3>📊 基本面分析师</h3>
+                    <SectionTitle icon="fundamentals" label="基本面分析师" />
                     {fundamentalsReportMarkdown ? (
                       <MarkdownView markdown={fundamentalsReportMarkdown} />
                     ) : (
@@ -1164,7 +1250,7 @@ export function AnalysisDashboard({
                     )}
                   </div>
                   <div className="card">
-                    <h3>📰 新闻分析师</h3>
+                    <SectionTitle icon="news" label="新闻分析师" />
                     {newsReportMarkdown ? (
                       <MarkdownView markdown={newsReportMarkdown} />
                     ) : (
@@ -1172,7 +1258,7 @@ export function AnalysisDashboard({
                     )}
                   </div>
                   <div className="card">
-                    <h3>🗣️ 舆情分析师</h3>
+                    <SectionTitle icon="social" label="舆情分析师" />
                     {socialReportMarkdown ? (
                       <MarkdownView markdown={socialReportMarkdown} />
                     ) : (
@@ -1195,7 +1281,7 @@ export function AnalysisDashboard({
                         <span className="badge">第 {turn.roundId} 轮</span>
                         <div className="grid cols-2">
                           <div className="card">
-                            <h3>🐂 多头</h3>
+                            <SectionTitle icon="bull" label="多头" />
                             {turn.bullMarkdown ? (
                               <MarkdownView markdown={turn.bullMarkdown} />
                             ) : (
@@ -1203,7 +1289,7 @@ export function AnalysisDashboard({
                             )}
                           </div>
                           <div className="card">
-                            <h3>🐻 空头</h3>
+                            <SectionTitle icon="bear" label="空头" />
                             {turn.bearMarkdown ? (
                               <MarkdownView markdown={turn.bearMarkdown} />
                             ) : (
@@ -1246,7 +1332,7 @@ export function AnalysisDashboard({
                 ) : null}
                 <div className="card-grid triple">
                   <div className="card">
-                    <h3>🚨 激进派</h3>
+                    <SectionTitle icon="risky" label="激进派" />
                     {riskyMarkdown ? (
                       <MarkdownView markdown={riskyMarkdown} />
                     ) : (
@@ -1254,7 +1340,7 @@ export function AnalysisDashboard({
                     )}
                   </div>
                   <div className="card">
-                    <h3>🛡️ 保守派</h3>
+                    <SectionTitle icon="safe" label="保守派" />
                     {safeMarkdown ? (
                       <MarkdownView markdown={safeMarkdown} />
                     ) : (
@@ -1262,7 +1348,7 @@ export function AnalysisDashboard({
                     )}
                   </div>
                   <div className="card">
-                    <h3>⚖️ 中立派</h3>
+                    <SectionTitle icon="neutral" label="中立派" />
                     {neutralMarkdown ? (
                       <MarkdownView markdown={neutralMarkdown} />
                     ) : (
