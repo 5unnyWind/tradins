@@ -5,6 +5,7 @@ import {
   marketAnalyst,
   neutralAnalyst,
   newsAnalyst,
+  polymarketAnalyst,
   researchManager,
   riskJudge,
   riskyAnalyst,
@@ -15,6 +16,7 @@ import { getFlowGraphMermaid } from "@/lib/config";
 import { fetchFundamentalSnapshot } from "@/lib/data/fundamentals";
 import { fetchMarketSnapshot } from "@/lib/data/market";
 import { fetchNewsSnapshot } from "@/lib/data/news";
+import { fetchPolymarketSnapshot } from "@/lib/data/polymarket";
 import { fetchSocialSnapshot } from "@/lib/data/social";
 import type {
   AgentReport,
@@ -40,8 +42,8 @@ export interface AnalysisArtifactEvent {
   title: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
-  key?: "market" | "fundamentals" | "news" | "social";
+  snapshotType?: "market" | "polymarket";
+  key?: "market" | "fundamentals" | "news" | "social" | "polymarket";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
 }
@@ -102,12 +104,13 @@ async function collectStageBundle(
   if (onMarketReady) {
     await onMarketReady(market);
   }
-  const [fundamentals, news, social] = await Promise.all([
+  const [fundamentals, news, social, polymarket] = await Promise.all([
     fetchFundamentalSnapshot(input.symbol),
     fetchNewsSnapshot(input.symbol, 12),
     fetchSocialSnapshot(input.symbol, 30),
+    fetchPolymarketSnapshot(input.symbol, 12),
   ]);
-  return { market, fundamentals, news, social };
+  return { market, fundamentals, news, social, polymarket };
 }
 
 function resolveMarketSnapshotError(snapshot: StageBundle["market"]): string | null {
@@ -245,13 +248,30 @@ function buildRecommendationCalibration(
   const socialErrorCount = Array.isArray(stageBundle.social.errors)
     ? stageBundle.social.errors.filter(Boolean).length
     : 0;
+  const impliedBullishProbability = Number(stageBundle.polymarket.impliedBullishProbability);
+  const hasPolymarketProbability =
+    Number.isFinite(impliedBullishProbability) && impliedBullishProbability >= 0 && impliedBullishProbability <= 1;
   const dataGaps: string[] = [];
   if (stageBundle.market.error) dataGaps.push("市场");
   if (stageBundle.fundamentals.error) dataGaps.push("基本面");
   if (stageBundle.news.error) dataGaps.push("新闻");
   if (socialErrorCount > 0) dataGaps.push(`舆情(${socialErrorCount}项)`);
+  if (stageBundle.polymarket.error) dataGaps.push("Polymarket");
   if (dataGaps.length) {
     conflicts.push(`部分数据源存在缺口：${dataGaps.join("、")}。`);
+  }
+
+  if (hasPolymarketProbability) {
+    if (recommendationBias === "bullish" && impliedBullishProbability <= 0.42) {
+      conflicts.push(
+        `建议偏多（${finalRecommendation}），但 Polymarket 隐含偏多概率仅 ${(impliedBullishProbability * 100).toFixed(1)}%。`,
+      );
+    }
+    if (recommendationBias === "bearish" && impliedBullishProbability >= 0.58) {
+      conflicts.push(
+        `建议偏空（${finalRecommendation}），但 Polymarket 隐含偏多概率为 ${(impliedBullishProbability * 100).toFixed(1)}%。`,
+      );
+    }
   }
 
   let confidence = finalRecommendation ? 46 : 22;
@@ -270,6 +290,16 @@ function buildRecommendationCalibration(
   else confidence += 3;
   if (socialErrorCount > 0) confidence -= Math.min(7, socialErrorCount * 2);
   else confidence += 3;
+  if (stageBundle.polymarket.error) confidence -= 4;
+  else confidence += 2;
+  if (hasPolymarketProbability && finalRecommendation) {
+    if (recommendationBias === "bullish") {
+      confidence += impliedBullishProbability >= 0.55 ? 3 : impliedBullishProbability <= 0.42 ? -5 : 0;
+    }
+    if (recommendationBias === "bearish") {
+      confidence += impliedBullishProbability <= 0.45 ? 3 : impliedBullishProbability >= 0.58 ? -5 : 0;
+    }
+  }
   confidence -= Math.min(24, conflicts.length * 6);
   confidence = clampScore(confidence, 5, 95);
 
@@ -288,6 +318,9 @@ function buildRecommendationCalibration(
     blendedSentiment === null
       ? "综合情绪=数据不足。"
       : `综合情绪=${blendedSentiment.toFixed(3)}（新闻+舆情均值）。`,
+    hasPolymarketProbability
+      ? `Polymarket隐含偏多概率=${(impliedBullishProbability * 100).toFixed(1)}%。`
+      : "Polymarket概率=数据不足。",
     dataGaps.length ? `数据完整性：存在缺口（${dataGaps.join("、")}）。` : "数据完整性：主要数据源可用。",
   ];
 
@@ -338,7 +371,7 @@ ${calibration.evidence.map((item) => `  - ${item}`).join("\n")}
 ${result.graphMermaid}
 \`\`\`
 
-## 第一阶段：四位分析师报告
+## 第一阶段：五位分析师报告
 ### 市场分析师
 ${result.analystReports.market.markdown}
 
@@ -350,6 +383,9 @@ ${result.analystReports.news.markdown}
 
 ### 舆情分析师
 ${result.analystReports.social.markdown}
+
+### 事件市场分析师（Polymarket）
+${result.analystReports.polymarket.markdown}
 
 ## 第二阶段：多空辩论
 ${debateText || "_无辩论记录_"}
@@ -461,7 +497,7 @@ export async function runTradinsAnalysis(
     await emitProgress(onEvent, { phase, message, step, totalSteps });
   };
 
-  await nextProgress("collect", "采集市场/基本面/新闻/舆情数据中");
+  await nextProgress("collect", "采集市场/基本面/新闻/舆情/Polymarket 数据中");
   const stageBundle = await collectStageBundle(input, async (market) => {
     await emitArtifact(onEvent, {
       artifactType: "snapshot",
@@ -470,10 +506,16 @@ export async function runTradinsAnalysis(
       payload: sanitizeForJson(market),
     });
   });
+  await emitArtifact(onEvent, {
+    artifactType: "snapshot",
+    snapshotType: "polymarket",
+    title: "Polymarket 事件快照",
+    payload: sanitizeForJson(stageBundle.polymarket),
+  });
 
-  await nextProgress("analysts", "四位分析师并行研判中");
+  await nextProgress("analysts", "五位分析师并行研判中");
   const runAnalyst = async (
-    key: "market" | "fundamentals" | "news" | "social",
+    key: "market" | "fundamentals" | "news" | "social" | "polymarket",
     title: string,
     runner: () => Promise<AgentReport>,
   ): Promise<AgentReport> => {
@@ -486,7 +528,7 @@ export async function runTradinsAnalysis(
     });
     return report;
   };
-  const [marketReport, fundamentalsReport, newsReport, socialReport] = await Promise.all([
+  const [marketReport, fundamentalsReport, newsReport, socialReport, polymarketReport] = await Promise.all([
     runAnalyst("market", "市场分析师报告", () =>
       marketAnalyst(input.symbol, stageBundle.market as unknown as Record<string, unknown>),
     ),
@@ -499,12 +541,16 @@ export async function runTradinsAnalysis(
     runAnalyst("social", "舆情分析师报告", () =>
       socialAnalyst(input.symbol, stageBundle.social as unknown as Record<string, unknown>),
     ),
+    runAnalyst("polymarket", "Polymarket 事件市场分析师报告", () =>
+      polymarketAnalyst(input.symbol, stageBundle.polymarket as unknown as Record<string, unknown>),
+    ),
   ]);
   const analystReports = {
     market: marketReport,
     fundamentals: fundamentalsReport,
     news: newsReport,
     social: socialReport,
+    polymarket: polymarketReport,
   };
 
   const debates: DebateTurn[] = [];

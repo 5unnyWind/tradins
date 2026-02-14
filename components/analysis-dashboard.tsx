@@ -4,7 +4,13 @@ import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
-import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, RecommendationCalibration } from "@/lib/types";
+import type {
+  AnalysisRecordMeta,
+  AnalysisResult,
+  MarketSnapshot,
+  PolymarketSnapshot,
+  RecommendationCalibration,
+} from "@/lib/types";
 
 const PriceChart = dynamic(
   () => import("@/components/price-chart").then((m) => m.PriceChart),
@@ -39,10 +45,12 @@ const FLOW_GRAPH_MERMAID = [
   "  FundamentalsAnalyst --> BullResearcher",
   "  NewsAnalyst --> BullResearcher",
   "  SocialAnalyst --> BullResearcher",
+  "  PolymarketAnalyst --> BullResearcher",
   "  MarketAnalyst --> BearResearcher",
   "  FundamentalsAnalyst --> BearResearcher",
   "  NewsAnalyst --> BearResearcher",
   "  SocialAnalyst --> BearResearcher",
+  "  PolymarketAnalyst --> BearResearcher",
   "  BullResearcher --> ResearchManager",
   "  BearResearcher --> ResearchManager",
   "  ResearchManager --> RiskyAnalyst",
@@ -182,6 +190,45 @@ function formatSnapshotTimestamp(snapshot: MarketSnapshot): string {
   return `${label} (${formatUtcOffset(date)})`;
 }
 
+function formatPolymarketDirection(direction: string): string {
+  if (direction === "bullish") return "偏多";
+  if (direction === "bearish") return "偏空";
+  return "中性";
+}
+
+function formatPolymarketProbability(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "N/A";
+  return `${(value * 100).toFixed(2)}%`;
+}
+
+function toPolymarketSnapshot(value: unknown): PolymarketSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<PolymarketSnapshot>;
+  if (typeof raw.symbol !== "string") return null;
+  if (!Array.isArray(raw.topMarkets)) return null;
+  return {
+    symbol: raw.symbol,
+    queryTerms: Array.isArray(raw.queryTerms) ? raw.queryTerms.map((term) => String(term ?? "")).filter(Boolean) : [],
+    fetchedAt: typeof raw.fetchedAt === "string" ? raw.fetchedAt : new Date().toISOString(),
+    scannedMarkets: Number.isFinite(Number(raw.scannedMarkets)) ? Number(raw.scannedMarkets) : 0,
+    matchedMarkets: Number.isFinite(Number(raw.matchedMarkets)) ? Number(raw.matchedMarkets) : 0,
+    bullishCount: Number.isFinite(Number(raw.bullishCount)) ? Number(raw.bullishCount) : 0,
+    bearishCount: Number.isFinite(Number(raw.bearishCount)) ? Number(raw.bearishCount) : 0,
+    neutralCount: Number.isFinite(Number(raw.neutralCount)) ? Number(raw.neutralCount) : 0,
+    impliedBullishProbability:
+      raw.impliedBullishProbability === null || raw.impliedBullishProbability === undefined
+        ? null
+        : Number(raw.impliedBullishProbability),
+    avgYesPrice: raw.avgYesPrice === null || raw.avgYesPrice === undefined ? null : Number(raw.avgYesPrice),
+    avgNoPrice: raw.avgNoPrice === null || raw.avgNoPrice === undefined ? null : Number(raw.avgNoPrice),
+    avgVolume24h: raw.avgVolume24h === null || raw.avgVolume24h === undefined ? null : Number(raw.avgVolume24h),
+    topMarkets: raw.topMarkets
+      .map((item) => (item && typeof item === "object" ? (item as PolymarketSnapshot["topMarkets"][number]) : null))
+      .filter((item): item is PolymarketSnapshot["topMarkets"][number] => item !== null),
+    error: typeof raw.error === "string" ? raw.error : undefined,
+  };
+}
+
 function stripLegacyRecommendationBlocks(markdown: string): string {
   if (!markdown) return markdown;
   const cleaned = markdown
@@ -262,8 +309,8 @@ type AnalyzeArtifactPayload = {
   title?: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
-  key?: "market" | "fundamentals" | "news" | "social";
+  snapshotType?: "market" | "polymarket";
+  key?: "market" | "fundamentals" | "news" | "social" | "polymarket";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
 };
@@ -279,7 +326,7 @@ type ParsedSseFrame = {
   data: unknown;
 };
 
-type AnalystArtifactKey = "market" | "fundamentals" | "news" | "social";
+type AnalystArtifactKey = "market" | "fundamentals" | "news" | "social" | "polymarket";
 
 type RiskArtifactSide = "risky" | "safe" | "neutral" | "judge";
 
@@ -294,6 +341,7 @@ type StreamCardsState = {
   riskReports: Partial<Record<RiskArtifactSide, string>>;
   debates: Record<number, StreamDebateState>;
   marketSnapshot: MarketSnapshot | null;
+  polymarketSnapshot: PolymarketSnapshot | null;
 };
 
 type StreamDebateTurn = {
@@ -311,7 +359,13 @@ type RenderDebateTurn = {
 type ArtifactUpdatePayload =
   | {
     artifactType: "snapshot";
+    snapshotType: "market";
     marketSnapshot: MarketSnapshot;
+  }
+  | {
+    artifactType: "snapshot";
+    snapshotType: "polymarket";
+    polymarketSnapshot: PolymarketSnapshot;
   }
   | {
     artifactType: TextArtifactType;
@@ -333,6 +387,7 @@ function createEmptyStreamCardsState(): StreamCardsState {
     riskReports: {},
     debates: {},
     marketSnapshot: null,
+    polymarketSnapshot: null,
   };
 }
 
@@ -364,13 +419,25 @@ function toArtifactUpdate(data: unknown): ArtifactUpdatePayload | null {
   if (!payload.artifactType) return null;
 
   if (payload.artifactType === "snapshot") {
-    if (payload.snapshotType !== "market") return null;
-    const marketSnapshot = toMarketSnapshot(payload.payload);
-    if (!marketSnapshot) return null;
-    return {
-      artifactType: "snapshot",
-      marketSnapshot,
-    };
+    if (payload.snapshotType === "market") {
+      const marketSnapshot = toMarketSnapshot(payload.payload);
+      if (!marketSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "market",
+        marketSnapshot,
+      };
+    }
+    if (payload.snapshotType === "polymarket") {
+      const polymarketSnapshot = toPolymarketSnapshot(payload.payload);
+      if (!polymarketSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "polymarket",
+        polymarketSnapshot,
+      };
+    }
+    return null;
   }
 
   if (!payload.markdown || typeof payload.markdown !== "string") return null;
@@ -392,16 +459,21 @@ function applyArtifactUpdate(prev: StreamCardsState, payload: ArtifactUpdatePayl
     riskReports: { ...prev.riskReports },
     debates: { ...prev.debates },
     marketSnapshot: prev.marketSnapshot,
+    polymarketSnapshot: prev.polymarketSnapshot,
   };
 
   if (payload.artifactType === "snapshot") {
-    next.marketSnapshot = payload.marketSnapshot;
+    if (payload.snapshotType === "market") {
+      next.marketSnapshot = payload.marketSnapshot;
+    } else {
+      next.polymarketSnapshot = payload.polymarketSnapshot;
+    }
     return next;
   }
 
   if (payload.artifactType === "analyst") {
     const key = payload.key;
-    if (key === "market" || key === "fundamentals" || key === "news" || key === "social") {
+    if (key === "market" || key === "fundamentals" || key === "news" || key === "social" || key === "polymarket") {
       next.analystReports[key] = payload.markdown;
     }
     return next;
@@ -535,6 +607,7 @@ export function AnalysisDashboard({
   const recordsHasMore = pages[pages.length - 1]?.hasMore ?? false;
   const isLoadingMoreRecords = isValidatingRecords && size > pages.length;
   const displayedMarketSnapshot = result?.stageBundle.market ?? streamCards.marketSnapshot;
+  const displayedPolymarketSnapshot = result?.stageBundle.polymarket ?? streamCards.polymarketSnapshot;
 
   const chartData = useMemo(() => {
     const bars = displayedMarketSnapshot?.recentBars ?? {};
@@ -583,6 +656,8 @@ export function AnalysisDashboard({
     result?.analystReports.fundamentals.markdown ?? streamCards.analystReports.fundamentals ?? "";
   const newsReportMarkdown = result?.analystReports.news.markdown ?? streamCards.analystReports.news ?? "";
   const socialReportMarkdown = result?.analystReports.social.markdown ?? streamCards.analystReports.social ?? "";
+  const polymarketReportMarkdown =
+    result?.analystReports?.polymarket?.markdown ?? streamCards.analystReports.polymarket ?? "";
   const preliminaryPlanMarkdown = result?.preliminaryPlan ?? streamCards.preliminaryPlan ?? "";
   const riskyMarkdown = result?.riskReports.risky ?? streamCards.riskReports.risky ?? "";
   const safeMarkdown = result?.riskReports.safe ?? streamCards.riskReports.safe ?? "";
@@ -600,19 +675,22 @@ export function AnalysisDashboard({
       fundamentalsReportMarkdown ||
       newsReportMarkdown ||
       socialReportMarkdown ||
+      polymarketReportMarkdown ||
       preliminaryPlanMarkdown ||
       riskyMarkdown ||
       safeMarkdown ||
       neutralMarkdown ||
       judgeMarkdown ||
       displayedDebates.length ||
-      Boolean(displayedMarketSnapshot),
+      Boolean(displayedMarketSnapshot) ||
+      Boolean(displayedPolymarketSnapshot),
     );
   }, [
     marketReportMarkdown,
     fundamentalsReportMarkdown,
     newsReportMarkdown,
     socialReportMarkdown,
+    polymarketReportMarkdown,
     preliminaryPlanMarkdown,
     riskyMarkdown,
     safeMarkdown,
@@ -620,6 +698,7 @@ export function AnalysisDashboard({
     judgeMarkdown,
     displayedDebates.length,
     displayedMarketSnapshot,
+    displayedPolymarketSnapshot,
   ]);
 
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
@@ -629,8 +708,9 @@ export function AnalysisDashboard({
     if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
+      { id: "section-polymarket-snapshot", label: "Polymarket 事件快照" },
       { id: "section-preliminary-plan", label: "交易计划" },
-      { id: "section-analysts", label: "四位分析师" },
+      { id: "section-analysts", label: "五位分析师" },
       { id: "section-debates", label: "多空辩论" },
     );
     for (const turn of displayedDebates) {
@@ -965,7 +1045,7 @@ export function AnalysisDashboard({
               <p className="eyebrow">tradins on next.js + vercel</p>
               <h1>Tradins 金融分析 Agengs-Team</h1>
               <p>
-                四位分析师并行研究，随后多空辩论、研究主管决策、风控内阁裁定。所有分析记录可持久化到
+                五位分析师并行研究，随后多空辩论、研究主管决策、风控内阁裁定。所有分析记录可持久化到
                 Vercel Postgres。
               </p>
               <p className="storage-tag">
@@ -1138,14 +1218,82 @@ export function AnalysisDashboard({
                     <MarkdownView markdown={preliminaryPlanMarkdown} />
                   ) : (
                     <div className="empty-state">
-                      {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
+                      {isAnalyzing ? "研究主管正在汇总五位分析师观点..." : "等待交易计划"}
                     </div>
                   )}
                 </article>
               </section>
 
+              <section className="panel anchor-target" id="section-polymarket-snapshot">
+                <h2>Polymarket 事件快照</h2>
+                {displayedPolymarketSnapshot ? (
+                  <>
+                    <div className="metric-grid">
+                      <div className="metric">
+                        <span>匹配合约数</span>
+                        <strong>{displayedPolymarketSnapshot.matchedMarkets}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>隐含偏多概率</span>
+                        <strong>{formatPolymarketProbability(displayedPolymarketSnapshot.impliedBullishProbability)}</strong>
+                      </div>
+                      <div className="metric">
+                        <span>偏多/偏空/中性</span>
+                        <strong>
+                          {displayedPolymarketSnapshot.bullishCount}/{displayedPolymarketSnapshot.bearishCount}/
+                          {displayedPolymarketSnapshot.neutralCount}
+                        </strong>
+                      </div>
+                      <div className="metric">
+                        <span>均值成交(24h)</span>
+                        <strong>{fmtNum(displayedPolymarketSnapshot.avgVolume24h)}</strong>
+                      </div>
+                    </div>
+                    {displayedPolymarketSnapshot.topMarkets.length ? (
+                      <div className="polymarket-list">
+                        {displayedPolymarketSnapshot.topMarkets.map((market) => (
+                          <article className="polymarket-item" key={market.id || market.question}>
+                            <div className="polymarket-item-head">
+                              <h3>{market.question}</h3>
+                              <span className={`polymarket-direction is-${market.direction}`}>
+                                {formatPolymarketDirection(market.direction)}
+                              </span>
+                            </div>
+                            <p className="polymarket-meta">
+                              Yes: {formatPolymarketProbability(market.yesPrice)} · No:{" "}
+                              {formatPolymarketProbability(market.noPrice)} · 24h量: {fmtNum(market.volume24h)} · 相关度:{" "}
+                              {market.relevanceScore}
+                            </p>
+                            {market.url ? (
+                              <a className="hero-link-button polymarket-link" href={market.url} target="_blank" rel="noreferrer">
+                                查看合约
+                              </a>
+                            ) : null}
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="empty-state">
+                        {isAnalyzing ? "Polymarket 合约匹配中..." : "当前标的暂无匹配的高相关事件合约"}
+                      </div>
+                    )}
+                    {displayedPolymarketSnapshot.error ? (
+                      <p className="status">Polymarket 数据提示: {displayedPolymarketSnapshot.error}</p>
+                    ) : null}
+                  </>
+                ) : (
+                  <div className="empty-state">
+                    {isAnalyzing
+                      ? "Polymarket 事件快照生成中..."
+                      : result
+                        ? "该记录生成于旧版本，暂无 Polymarket 数据。"
+                        : "先运行一次分析"}
+                  </div>
+                )}
+              </section>
+
               <section className="panel anchor-target" id="section-analysts">
-                <h2>四位分析师</h2>
+                <h2>五位分析师</h2>
                 <div className="card-grid">
                   <div className="card">
                     <h3>📈 市场分析师</h3>
@@ -1177,6 +1325,14 @@ export function AnalysisDashboard({
                       <MarkdownView markdown={socialReportMarkdown} />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "舆情分析师正在生成中..." : "等待内容"}</div>
+                    )}
+                  </div>
+                  <div className="card">
+                    <h3>🧭 事件市场分析师</h3>
+                    {polymarketReportMarkdown ? (
+                      <MarkdownView markdown={polymarketReportMarkdown} />
+                    ) : (
+                      <div className="empty-state">{isAnalyzing ? "Polymarket 分析师正在生成中..." : "等待内容"}</div>
                     )}
                   </div>
                 </div>

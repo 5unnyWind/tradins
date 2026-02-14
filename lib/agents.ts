@@ -200,6 +200,49 @@ ${jsonBlob(payload)}
   return { agent: "Social Analyst", role: "舆情", markdown, payload };
 }
 
+export async function polymarketAnalyst(symbol: string, payload: Record<string, unknown>): Promise<AgentReport> {
+  const implied = fmtPct(payload.impliedBullishProbability, 2);
+  const matched = String(payload.matchedMarkets ?? 0);
+  const bullish = String(payload.bullishCount ?? 0);
+  const bearish = String(payload.bearishCount ?? 0);
+  const neutral = String(payload.neutralCount ?? 0);
+  const avgVol24h = fmtNum(payload.avgVolume24h, 2);
+  const sourceError = typeof payload.error === "string" ? payload.error.trim() : "";
+  const fallback = `## 事件市场热度
+- 匹配市场数: \`${matched}\`
+- 24h 平均成交额: \`${avgVol24h}\`
+
+## 概率分布
+- 事件隐含偏多概率: \`${implied}\`
+- 偏多/偏空/中性事件: \`${bullish} / ${bearish} / ${neutral}\`
+
+## 关键合约观察
+- 重点关注高成交、临近到期且概率快速变化的合约。
+
+## 事件驱动结论
+- 倾向: \`中性\`
+
+## 风险提示
+- 事件市场价格会受短期情绪和流动性冲击影响，需与基本面和技术面交叉验证。${sourceError ? `\n- Polymarket 数据拉取存在异常：${sourceError}` : ""}`;
+  const markdown = await askWithFallback(
+    "你是事件市场分析师，专注 Polymarket 合约的隐含概率信号。输出中文 Markdown。",
+    `请按以下章节输出：
+## 事件市场热度
+## 概率分布
+## 关键合约观察
+## 事件驱动结论
+## 风险提示
+
+股票/标的: ${symbol}
+数据:
+\`\`\`json
+${jsonBlob(payload)}
+\`\`\``,
+    fallback,
+  );
+  return { agent: "Polymarket Analyst", role: "事件概率", markdown, payload };
+}
+
 export async function bullResearcher(
   symbol: string,
   round: number,

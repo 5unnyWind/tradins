@@ -92,11 +92,44 @@ export interface SocialSnapshot {
   errors: string[];
 }
 
+export interface PolymarketMarketPoint {
+  id: string;
+  question: string;
+  eventTitle: string | null;
+  endDate: string | null;
+  yesPrice: number | null;
+  noPrice: number | null;
+  volume24h: number | null;
+  liquidity: number | null;
+  oneDayPriceChange: number | null;
+  direction: "bullish" | "bearish" | "neutral";
+  relevanceScore: number;
+  url: string | null;
+}
+
+export interface PolymarketSnapshot {
+  symbol: string;
+  queryTerms: string[];
+  fetchedAt: string;
+  scannedMarkets: number;
+  matchedMarkets: number;
+  bullishCount: number;
+  bearishCount: number;
+  neutralCount: number;
+  impliedBullishProbability: number | null;
+  avgYesPrice: number | null;
+  avgNoPrice: number | null;
+  avgVolume24h: number | null;
+  topMarkets: PolymarketMarketPoint[];
+  error?: string;
+}
+
 export interface StageBundle {
   market: MarketSnapshot;
   fundamentals: FundamentalsSnapshot;
   news: NewsSnapshot;
   social: SocialSnapshot;
+  polymarket: PolymarketSnapshot;
 }
 
 export interface AgentReport {
@@ -132,6 +165,7 @@ export interface AnalysisResult {
     fundamentals: AgentReport;
     news: AgentReport;
     social: AgentReport;
+    polymarket: AgentReport;
   };
   debates: DebateTurn[];
   preliminaryPlan: string;
@@ -273,7 +307,7 @@ export interface ConclusionDriftReport {
   points: ConclusionDriftPoint[];
 }
 
-export type DataSourceKey = "yahoo" | "eastmoney" | "reddit";
+export type DataSourceKey = "yahoo" | "eastmoney" | "reddit" | "polymarket";
 
 export interface DataSourceHealthItem {
   source: DataSourceKey;

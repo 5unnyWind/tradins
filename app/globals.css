@@ -1133,6 +1133,72 @@ button.record-item:hover:not(:disabled) {
   line-height: 1.5;
 }
 
+.polymarket-list {
+  display: grid;
+  gap: 10px;
+}
+
+.polymarket-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.polymarket-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.polymarket-item-head h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.polymarket-direction {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #35516a;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.polymarket-direction.is-bullish {
+  color: #55e4cc;
+  border-color: rgba(45, 212, 191, 0.55);
+}
+
+.polymarket-direction.is-bearish {
+  color: #fda4af;
+  border-color: rgba(244, 63, 94, 0.55);
+}
+
+.polymarket-direction.is-neutral {
+  color: #9bb0c7;
+}
+
+.polymarket-meta {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.polymarket-link {
+  width: fit-content;
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+}
+
 .scheduler-shell {
   width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   margin: calc(16px + env(safe-area-inset-top)) auto calc(28px + env(safe-area-inset-bottom));
@@ -1323,6 +1389,10 @@ button.record-item:hover:not(:disabled) {
 
   .source-health-series-list li {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .polymarket-item-head {
+    flex-direction: column;
   }
 
   .scheduler-layout {
