@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
-import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, RecommendationCalibration } from "@/lib/types";
+import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, NewsItem, RecommendationCalibration } from "@/lib/types";
 
 const PriceChart = dynamic(
   () => import("@/components/price-chart").then((m) => m.PriceChart),
@@ -16,6 +16,10 @@ const MarkdownView = dynamic(
 );
 const MermaidView = dynamic(
   () => import("@/components/mermaid-view").then((m) => m.MermaidView),
+  { ssr: false },
+);
+const SentimentGauge = dynamic(
+  () => import("@/components/sentiment-gauge").then((m) => m.SentimentGauge),
   { ssr: false },
 );
 
@@ -192,6 +196,33 @@ function confidenceLevelText(level: RecommendationCalibration["confidenceLevel"]
   if (level === "high") return "高";
   if (level === "medium") return "中";
   return "低";
+}
+
+function toSentimentGaugeScore(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round((value + 1) * 50)));
+}
+
+function sentimentGaugeLabel(score: number | null): string {
+  if (score === null) return "暂无信号";
+  if (score >= 80) return "偏贪婪";
+  if (score >= 60) return "乐观";
+  if (score >= 40) return "中性";
+  if (score >= 20) return "谨慎";
+  return "偏恐惧";
+}
+
+function formatNewsTimestamp(value: string | null): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 function getRecordDateKey(value: string): string {
@@ -731,6 +762,22 @@ export function AnalysisDashboard({
   );
   const recommendationCalibration = result?.recommendationCalibration ?? null;
 
+  const sentimentGaugeScore = useMemo(() => {
+    if (!result) return null;
+    const newsScore = toSentimentGaugeScore(result.stageBundle.news.avgSentiment);
+    const socialScore = toSentimentGaugeScore(result.stageBundle.social.avgSentiment);
+    if (newsScore === null && socialScore === null) return null;
+    if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
+    return newsScore ?? socialScore;
+  }, [result]);
+
+  const sentimentGaugeText = useMemo(() => sentimentGaugeLabel(sentimentGaugeScore), [sentimentGaugeScore]);
+
+  const latestNewsItems = useMemo<NewsItem[]>(() => {
+    if (!result) return [];
+    return (result.stageBundle.news.items ?? []).slice(0, 8);
+  }, [result]);
+
   const streamHasContent = useMemo(() => {
     return Boolean(
       marketReportMarkdown ||
@@ -771,6 +818,8 @@ export function AnalysisDashboard({
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
       { id: "section-preliminary-plan", label: "交易计划" },
+      { id: "section-sentiment-gauge", label: "情绪仪表盘" },
+      { id: "section-news-feed", label: "News Feed" },
       { id: "section-analysts", label: "四位分析师" },
       { id: "section-debates", label: "多空辩论" },
     );
@@ -1288,6 +1337,50 @@ export function AnalysisDashboard({
                     <div className="empty-state">
                       {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
                     </div>
+                  )}
+                </article>
+              </section>
+
+              <section className="grid cols-2">
+                <article className="panel anchor-target" id="section-sentiment-gauge">
+                  <h2>情绪仪表盘</h2>
+                  {sentimentGaugeScore !== null ? (
+                    <div className="sentiment-panel">
+                      <SentimentGauge score={sentimentGaugeScore} />
+                      <p className="sentiment-panel-label">{sentimentGaugeText}</p>
+                      <p className="sentiment-panel-meta">
+                        新闻情绪 {Math.round((toSentimentGaugeScore(result?.stageBundle.news.avgSentiment) ?? 0))} · 社媒情绪 {Math.round((toSentimentGaugeScore(result?.stageBundle.social.avgSentiment) ?? 0))}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="empty-state">{isAnalyzing ? "情绪信号汇总中..." : "等待情绪数据"}</div>
+                  )}
+                </article>
+
+                <article className="panel anchor-target" id="section-news-feed">
+                  <h2>News Feed</h2>
+                  {latestNewsItems.length ? (
+                    <div className="news-feed-list">
+                      {latestNewsItems.map((item, index) => (
+                        <div className="news-feed-item" key={`${index}-${item.title}`}>
+                          <div className="news-feed-head">
+                            <strong>{item.title}</strong>
+                            <span>{formatNewsTimestamp(item.publishedAt)}</span>
+                          </div>
+                          {item.summary ? <p>{shorten(item.summary, 180)}</p> : null}
+                          <div className="news-feed-foot">
+                            <em>{item.publisher ?? "未知来源"}</em>
+                            {item.link ? (
+                              <a href={item.link} target="_blank" rel="noreferrer">
+                                查看
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">{isAnalyzing ? "资讯抓取中..." : "暂无资讯"}</div>
                   )}
                 </article>
               </section>
