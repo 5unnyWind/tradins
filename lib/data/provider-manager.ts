@@ -11,6 +11,7 @@ export interface DataProviderManagerOptions {
 }
 
 export type DataSourceProfile = "balanced" | "china-first" | "global-first";
+export type SymbolMarket = "a-share" | "hk" | "global";
 
 function dedupe<T extends string>(items: T[]): T[] {
   return [...new Set(items)];
@@ -51,26 +52,29 @@ function parseProfile(raw: string | undefined): DataSourceProfile {
 }
 
 type ProviderField = keyof Required<DataProviderManagerOptions>;
+const A_SHARE_CODE_PREFIXES = new Set(["0", "2", "3", "5", "6", "9"]);
 
 function normalizeSymbol(symbol: string): string {
   return symbol.trim().toUpperCase();
 }
 
-function isAShareSymbol(symbol: string): boolean {
-  const s = normalizeSymbol(symbol);
-  if (/^(SH|SZ)\d{6}$/.test(s)) return true;
-  if (/^\d{6}\.(SH|SZ)$/.test(s)) return true;
-  return /^\d{6}$/.test(s);
-}
+export function detectSymbolMarket(symbol: string): SymbolMarket {
+  const normalized = normalizeSymbol(symbol);
+  if (!normalized) return "global";
 
-function isHKSymbol(symbol: string): boolean {
-  const s = normalizeSymbol(symbol);
-  if (/^\d{4,5}\.HK$/.test(s)) return true;
-  return /^0?\d{4,5}$/.test(s);
+  if (/^(SH|SZ)\d{6}$/.test(normalized)) return "a-share";
+  if (/^\d{6}\.(SH|SS|SZ)$/.test(normalized)) return "a-share";
+  if (/^\d{6}$/.test(normalized) && A_SHARE_CODE_PREFIXES.has(normalized[0])) return "a-share";
+
+  if (/^\d{4,5}\.HK$/.test(normalized)) return "hk";
+  if (/^HK\d{4,5}$/.test(normalized)) return "hk";
+
+  return "global";
 }
 
 function isChinaPreferredSymbol(symbol: string): boolean {
-  return isAShareSymbol(symbol) || isHKSymbol(symbol);
+  const market = detectSymbolMarket(symbol);
+  return market === "a-share" || market === "hk";
 }
 
 export class DataProviderManager {
