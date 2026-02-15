@@ -44,6 +44,10 @@ TRADINS_LLM_MAX_RETRIES=2
 TRADINS_LLM_RETRY_BASE_MS=400
 TRADINS_LLM_RETRY_MAX_MS=5000
 
+# 数据源策略（可选）
+# balanced | china-first | global-first
+TRADINS_DATA_SOURCE_PROFILE=balanced
+
 # Scheduler 管理后台（/scheduler）
 SCHEDULER_ADMIN_PASSWORD=your_scheduler_password
 SCHEDULER_AUTH_SECRET=your_random_secret

@@ -13,6 +13,8 @@ const EASTMONEY_HEADERS: Record<string, string> = {
 };
 const MAX_GUBA_TEXT_LENGTH = 1200;
 
+export type SocialDataProvider = "eastmoney-guba" | "reddit" | "stocktwits";
+
 function normalizeSymbol(symbol: string): string {
   return symbol.split(".")[0].replace(/[^A-Za-z]/g, "").toUpperCase();
 }
@@ -165,18 +167,45 @@ function sortAndPick(items: SocialItem[], limit: number): SocialItem[] {
     .slice(0, limit);
 }
 
-export async function fetchSocialSnapshot(symbol: string, limit = 30): Promise<SocialSnapshot> {
+export async function fetchSocialSnapshotWithProviders(
+  symbol: string,
+  limit = 30,
+  providers: SocialDataProvider[] = ["eastmoney-guba", "reddit", "stocktwits"],
+): Promise<SocialSnapshot> {
   const instrument = resolveInstrumentContext(symbol);
   const sourceSymbol = instrument.socialSymbol;
   const half = Math.max(5, Math.floor(limit / 2));
   const errors: string[] = [];
   const ashare = resolveAShareSymbol(sourceSymbol);
-  const tasks = ashare
-    ? [{ source: "eastmoney-guba" as const, task: fetchAshareGuba(sourceSymbol, limit) }]
-    : [
-        { source: "reddit" as const, task: fetchReddit(sourceSymbol, half) },
-        { source: "stocktwits" as const, task: fetchStocktwits(sourceSymbol, half) },
-      ];
+  const tasks: Array<{ source: SocialDataProvider; task: Promise<SocialItem[]> }> = [];
+
+  for (const provider of providers) {
+    if (provider === "eastmoney-guba") {
+      if (!ashare) continue;
+      tasks.push({ source: provider, task: fetchAshareGuba(sourceSymbol, limit) });
+      continue;
+    }
+    if (provider === "reddit") {
+      tasks.push({ source: provider, task: fetchReddit(sourceSymbol, half) });
+      continue;
+    }
+    if (provider === "stocktwits") {
+      tasks.push({ source: provider, task: fetchStocktwits(sourceSymbol, half) });
+    }
+  }
+
+  if (!tasks.length) {
+    return {
+      symbol,
+      count: 0,
+      engagement: 0,
+      distribution: { positive: 0, negative: 0, neutral: 0 },
+      avgSentiment: 0,
+      topics: [],
+      items: [],
+      errors: ["所有社媒数据源均不可用"],
+    };
+  }
 
   const settled = await Promise.allSettled(tasks.map((item) => item.task));
 
@@ -212,4 +241,8 @@ export async function fetchSocialSnapshot(symbol: string, limit = 30): Promise<S
     items: picked,
     errors,
   };
+}
+
+export async function fetchSocialSnapshot(symbol: string, limit = 30): Promise<SocialSnapshot> {
+  return fetchSocialSnapshotWithProviders(symbol, limit, ["eastmoney-guba", "reddit", "stocktwits"]);
 }
