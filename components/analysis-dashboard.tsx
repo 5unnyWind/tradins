@@ -567,6 +567,46 @@ async function readErrorMessage(response: Response): Promise<string> {
   return raw;
 }
 
+const PANEL_COLLAPSE_LINE_THRESHOLD = 14;
+
+function shouldCollapseMarkdown(markdown: string): boolean {
+  const trimmed = markdown.trim();
+  if (!trimmed) return false;
+  const lines = trimmed.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
+  return lines > PANEL_COLLAPSE_LINE_THRESHOLD || trimmed.length > 700;
+}
+
+function CollapsibleMarkdown({
+  panelKey,
+  markdown,
+  expanded,
+  onToggle,
+}: {
+  panelKey: string;
+  markdown: string;
+  expanded: boolean;
+  onToggle: (panelKey: string) => void;
+}) {
+  const collapsible = shouldCollapseMarkdown(markdown);
+  return (
+    <div className="collapsible-markdown-block">
+      <div className={collapsible && !expanded ? "collapsible-markdown is-collapsed" : "collapsible-markdown"}>
+        <MarkdownView markdown={markdown} />
+      </div>
+      {collapsible ? (
+        <button
+          type="button"
+          className="collapsible-markdown-toggle"
+          onClick={() => onToggle(panelKey)}
+          aria-expanded={expanded}
+        >
+          {expanded ? "收起" : "展开完整内容"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export function AnalysisDashboard({
   initialRecords,
   initialStorageMode,
@@ -584,6 +624,7 @@ export function AnalysisDashboard({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
+  const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
   const sidebarRef = useRef<HTMLElement | null>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const recordListRef = useRef<HTMLDivElement | null>(null);
@@ -710,6 +751,10 @@ export function AnalysisDashboard({
 
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
 
+  const togglePanelExpanded = useCallback((panelKey: string) => {
+    setExpandedPanels((prev) => ({ ...prev, [panelKey]: !prev[panelKey] }));
+  }, []);
+
   const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
     const targets: QuickJumpTarget[] = [];
     if (!showAnalysisPanels) return targets;
@@ -824,6 +869,7 @@ export function AnalysisDashboard({
     setStatusLog([]);
     setStreamCards(createEmptyStreamCardsState());
     setResult(null);
+    setExpandedPanels({});
     pushStatusLine("正在建立流式连接...");
 
     const payload: Record<string, unknown> = {
@@ -940,6 +986,7 @@ export function AnalysisDashboard({
   async function loadRecord(id: number) {
     pushStatusLine(`正在加载记录 #${id} ...`);
     setStreamCards(createEmptyStreamCardsState());
+    setExpandedPanels({});
     const response = await fetch(`/api/records/${id}`, {
       cache: "no-store",
       headers: NO_CACHE_HEADERS,
@@ -1221,7 +1268,12 @@ export function AnalysisDashboard({
                 <article className="panel anchor-target" id="section-preliminary-plan">
                   <h2>研究主管初步交易计划</h2>
                   {preliminaryPlanMarkdown ? (
-                    <MarkdownView markdown={preliminaryPlanMarkdown} />
+                    <CollapsibleMarkdown
+                      panelKey="preliminary-plan"
+                      markdown={preliminaryPlanMarkdown}
+                      expanded={Boolean(expandedPanels["preliminary-plan"])}
+                      onToggle={togglePanelExpanded}
+                    />
                   ) : (
                     <div className="empty-state">
                       {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
@@ -1236,7 +1288,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="market" label="市场分析师" />
                     {marketReportMarkdown ? (
-                      <MarkdownView markdown={marketReportMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="analyst-market"
+                        markdown={marketReportMarkdown}
+                        expanded={Boolean(expandedPanels["analyst-market"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "市场分析师正在生成中..." : "等待内容"}</div>
                     )}
@@ -1244,7 +1301,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="fundamentals" label="基本面分析师" />
                     {fundamentalsReportMarkdown ? (
-                      <MarkdownView markdown={fundamentalsReportMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="analyst-fundamentals"
+                        markdown={fundamentalsReportMarkdown}
+                        expanded={Boolean(expandedPanels["analyst-fundamentals"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "基本面分析师正在生成中..." : "等待内容"}</div>
                     )}
@@ -1252,7 +1314,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="news" label="新闻分析师" />
                     {newsReportMarkdown ? (
-                      <MarkdownView markdown={newsReportMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="analyst-news"
+                        markdown={newsReportMarkdown}
+                        expanded={Boolean(expandedPanels["analyst-news"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "新闻分析师正在生成中..." : "等待内容"}</div>
                     )}
@@ -1260,7 +1327,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="social" label="舆情分析师" />
                     {socialReportMarkdown ? (
-                      <MarkdownView markdown={socialReportMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="analyst-social"
+                        markdown={socialReportMarkdown}
+                        expanded={Boolean(expandedPanels["analyst-social"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "舆情分析师正在生成中..." : "等待内容"}</div>
                     )}
@@ -1283,7 +1355,12 @@ export function AnalysisDashboard({
                           <div className="card">
                             <SectionTitle icon="bull" label="多头" />
                             {turn.bullMarkdown ? (
-                              <MarkdownView markdown={turn.bullMarkdown} />
+                              <CollapsibleMarkdown
+                                panelKey={`debate-${turn.roundId}-bull`}
+                                markdown={turn.bullMarkdown}
+                                expanded={Boolean(expandedPanels[`debate-${turn.roundId}-bull`])}
+                                onToggle={togglePanelExpanded}
+                              />
                             ) : (
                               <div className="empty-state">多头观点生成中...</div>
                             )}
@@ -1291,7 +1368,12 @@ export function AnalysisDashboard({
                           <div className="card">
                             <SectionTitle icon="bear" label="空头" />
                             {turn.bearMarkdown ? (
-                              <MarkdownView markdown={turn.bearMarkdown} />
+                              <CollapsibleMarkdown
+                                panelKey={`debate-${turn.roundId}-bear`}
+                                markdown={turn.bearMarkdown}
+                                expanded={Boolean(expandedPanels[`debate-${turn.roundId}-bear`])}
+                                onToggle={togglePanelExpanded}
+                              />
                             ) : (
                               <div className="empty-state">空头观点生成中...</div>
                             )}
@@ -1334,7 +1416,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="risky" label="激进派" />
                     {riskyMarkdown ? (
-                      <MarkdownView markdown={riskyMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="risk-risky"
+                        markdown={riskyMarkdown}
+                        expanded={Boolean(expandedPanels["risk-risky"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "激进派评估中..." : "等待内容"}</div>
                     )}
@@ -1342,7 +1429,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="safe" label="保守派" />
                     {safeMarkdown ? (
-                      <MarkdownView markdown={safeMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="risk-safe"
+                        markdown={safeMarkdown}
+                        expanded={Boolean(expandedPanels["risk-safe"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "保守派评估中..." : "等待内容"}</div>
                     )}
@@ -1350,7 +1442,12 @@ export function AnalysisDashboard({
                   <div className="card">
                     <SectionTitle icon="neutral" label="中立派" />
                     {neutralMarkdown ? (
-                      <MarkdownView markdown={neutralMarkdown} />
+                      <CollapsibleMarkdown
+                        panelKey="risk-neutral"
+                        markdown={neutralMarkdown}
+                        expanded={Boolean(expandedPanels["risk-neutral"])}
+                        onToggle={togglePanelExpanded}
+                      />
                     ) : (
                       <div className="empty-state">{isAnalyzing ? "中立派评估中..." : "等待内容"}</div>
                     )}
@@ -1359,7 +1456,12 @@ export function AnalysisDashboard({
                 <div className="judge-box">
                   <h3>风控法官</h3>
                   {judgeMarkdown ? (
-                    <MarkdownView markdown={judgeMarkdown} />
+                    <CollapsibleMarkdown
+                      panelKey="risk-judge"
+                      markdown={judgeMarkdown}
+                      expanded={Boolean(expandedPanels["risk-judge"])}
+                      onToggle={togglePanelExpanded}
+                    />
                   ) : (
                     <div className="empty-state">{isAnalyzing ? "法官裁定生成中..." : "等待裁定"}</div>
                   )}

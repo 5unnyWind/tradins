@@ -815,6 +815,47 @@ button.record-item:hover:not(:disabled) {
   padding: 1px 6px;
 }
 
+.collapsible-markdown-block {
+  display: grid;
+  gap: 8px;
+}
+
+.collapsible-markdown {
+  position: relative;
+}
+
+.collapsible-markdown.is-collapsed {
+  max-height: 260px;
+  overflow: hidden;
+}
+
+.collapsible-markdown.is-collapsed::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  background: linear-gradient(180deg, rgba(9, 14, 20, 0), rgba(9, 14, 20, 0.95));
+  pointer-events: none;
+}
+
+.collapsible-markdown-toggle {
+  align-self: flex-start;
+  border: 1px solid rgba(122, 162, 255, 0.35);
+  background: rgba(61, 123, 255, 0.12);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.collapsible-markdown-toggle:hover {
+  background: rgba(61, 123, 255, 0.2);
+}
+
 .backtest-shell {
   width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
 }
