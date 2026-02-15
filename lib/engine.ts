@@ -12,10 +12,7 @@ import {
   socialAnalyst,
 } from "@/lib/agents";
 import { getFlowGraphMermaid } from "@/lib/config";
-import { fetchFundamentalSnapshot } from "@/lib/data/fundamentals";
-import { fetchMarketSnapshot } from "@/lib/data/market";
-import { fetchNewsSnapshot } from "@/lib/data/news";
-import { fetchSocialSnapshot } from "@/lib/data/social";
+import { DataProviderManager } from "@/lib/data/provider-manager";
 import type {
   AgentReport,
   AnalysisInput,
@@ -40,7 +37,7 @@ export interface AnalysisArtifactEvent {
   title: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
+  snapshotType?: "market" | "news" | "social";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -94,7 +91,8 @@ async function collectStageBundle(
   input: AnalysisInput,
   onMarketReady?: (market: StageBundle["market"]) => void | Promise<void>,
 ): Promise<StageBundle> {
-  const market = await fetchMarketSnapshot(input.symbol, input.period, input.interval);
+  const providerManager = new DataProviderManager();
+  const market = await providerManager.fetchMarket(input.symbol, input.period, input.interval);
   const marketError = resolveMarketSnapshotError(market);
   if (marketError) {
     throw new Error(`市场快照获取失败，已中止后续分析：${marketError}`);
@@ -103,9 +101,9 @@ async function collectStageBundle(
     await onMarketReady(market);
   }
   const [fundamentals, news, social] = await Promise.all([
-    fetchFundamentalSnapshot(input.symbol),
-    fetchNewsSnapshot(input.symbol, 12),
-    fetchSocialSnapshot(input.symbol, 30),
+    providerManager.fetchFundamentals(input.symbol),
+    providerManager.fetchNews(input.symbol, 12),
+    providerManager.fetchSocial(input.symbol, 30),
   ]);
   return { market, fundamentals, news, social };
 }
@@ -469,6 +467,18 @@ export async function runTradinsAnalysis(
       title: "市场快照",
       payload: sanitizeForJson(market),
     });
+  });
+  await emitArtifact(onEvent, {
+    artifactType: "snapshot",
+    snapshotType: "news",
+    title: "新闻快照",
+    payload: sanitizeForJson(stageBundle.news),
+  });
+  await emitArtifact(onEvent, {
+    artifactType: "snapshot",
+    snapshotType: "social",
+    title: "舆情快照",
+    payload: sanitizeForJson(stageBundle.social),
   });
 
   await nextProgress("analysts", "四位分析师并行研判中");

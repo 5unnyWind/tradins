@@ -44,6 +44,14 @@ TRADINS_LLM_MAX_RETRIES=2
 TRADINS_LLM_RETRY_BASE_MS=400
 TRADINS_LLM_RETRY_MAX_MS=5000
 
+# 数据源策略（可选）
+# balanced | china-first | global-first
+TRADINS_DATA_SOURCE_PROFILE=balanced
+
+# 说明：A股/港股会自动走中文源优先（等价于 china-first 的 provider 顺序）
+# TRADINS_DATA_SOURCE_PROFILE 主要影响美股/全球标的的默认顺序。
+# 若你在代码里显式传入 provider 列表，则以显式配置为准。
+
 # Scheduler 管理后台（/scheduler）
 SCHEDULER_ADMIN_PASSWORD=your_scheduler_password
 SCHEDULER_AUTH_SECRET=your_random_secret

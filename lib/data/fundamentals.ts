@@ -810,11 +810,11 @@ function toFallbackSnapshot(
   return snapshot;
 }
 
-export async function fetchFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot> {
+export type FundamentalsDataProvider = "eastmoney" | "yahoo";
+
+async function fetchYahooFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot> {
   const instrument = resolveInstrumentContext(symbol);
   const lookupSymbol = instrument.fundamentalsSymbol;
-  const aShareSnapshot = await fetchAShareFundamentalSnapshot(lookupSymbol);
-  if (aShareSnapshot && hasAnySignal(aShareSnapshot)) return aShareSnapshot;
 
   const modules = [
     "price",
@@ -929,6 +929,30 @@ export async function fetchFundamentalSnapshot(symbol: string): Promise<Fundamen
         primaryReason,
       ),
   );
+}
+
+export async function fetchFundamentalSnapshotWithProviders(
+  symbol: string,
+  providers: FundamentalsDataProvider[] = ["eastmoney", "yahoo"],
+): Promise<FundamentalsSnapshot> {
+  for (const provider of providers) {
+    if (provider === "eastmoney") {
+      const instrument = resolveInstrumentContext(symbol);
+      const lookupSymbol = instrument.fundamentalsSymbol;
+      const snapshot = await fetchAShareFundamentalSnapshot(lookupSymbol);
+      if (snapshot && hasAnySignal(snapshot)) return snapshot;
+      continue;
+    }
+    if (provider === "yahoo") {
+      const snapshot = await fetchYahooFundamentalSnapshot(symbol);
+      if (!snapshot.error || hasAnySignal(snapshot)) return snapshot;
+    }
+  }
+  return emptySnapshot(symbol, "所有基础面数据源均不可用");
+}
+
+export async function fetchFundamentalSnapshot(symbol: string): Promise<FundamentalsSnapshot> {
+  return fetchFundamentalSnapshotWithProviders(symbol, ["eastmoney", "yahoo"]);
 }
 
 function defaultKey(

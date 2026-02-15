@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import useSWRInfinite from "swr/infinite";
 
-import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, RecommendationCalibration } from "@/lib/types";
+import type { AnalysisRecordMeta, AnalysisResult, MarketSnapshot, NewsItem, RecommendationCalibration } from "@/lib/types";
 
 const PriceChart = dynamic(
   () => import("@/components/price-chart").then((m) => m.PriceChart),
@@ -16,6 +16,10 @@ const MarkdownView = dynamic(
 );
 const MermaidView = dynamic(
   () => import("@/components/mermaid-view").then((m) => m.MermaidView),
+  { ssr: false },
+);
+const SentimentGauge = dynamic(
+  () => import("@/components/sentiment-gauge").then((m) => m.SentimentGauge),
   { ssr: false },
 );
 
@@ -194,6 +198,33 @@ function confidenceLevelText(level: RecommendationCalibration["confidenceLevel"]
   return "低";
 }
 
+function toSentimentGaugeScore(value: number | null | undefined): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null;
+  return Math.max(0, Math.min(100, Math.round((value + 1) * 50)));
+}
+
+function sentimentGaugeLabel(score: number | null): string {
+  if (score === null) return "暂无信号";
+  if (score >= 80) return "偏贪婪";
+  if (score >= 60) return "乐观";
+  if (score >= 40) return "中性";
+  if (score >= 20) return "谨慎";
+  return "偏恐惧";
+}
+
+function formatNewsTimestamp(value: string | null): string {
+  if (!value) return "时间未知";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
+
 function getRecordDateKey(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
@@ -348,7 +379,7 @@ type AnalyzeArtifactPayload = {
   title?: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
+  snapshotType?: "market" | "news" | "social";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -374,12 +405,18 @@ type StreamDebateState = {
   bearMarkdown?: string;
 };
 
+type StreamNewsSnapshot = Pick<AnalysisResult["stageBundle"]["news"], "avgSentiment" | "items">;
+
+type StreamSocialSnapshot = Pick<AnalysisResult["stageBundle"]["social"], "avgSentiment">;
+
 type StreamCardsState = {
   analystReports: Partial<Record<AnalystArtifactKey, string>>;
   preliminaryPlan: string | null;
   riskReports: Partial<Record<RiskArtifactSide, string>>;
   debates: Record<number, StreamDebateState>;
   marketSnapshot: MarketSnapshot | null;
+  newsSnapshot: StreamNewsSnapshot | null;
+  socialSnapshot: StreamSocialSnapshot | null;
 };
 
 type StreamDebateTurn = {
@@ -397,7 +434,18 @@ type RenderDebateTurn = {
 type ArtifactUpdatePayload =
   | {
     artifactType: "snapshot";
+    snapshotType: "market";
     marketSnapshot: MarketSnapshot;
+  }
+  | {
+    artifactType: "snapshot";
+    snapshotType: "news";
+    newsSnapshot: StreamNewsSnapshot;
+  }
+  | {
+    artifactType: "snapshot";
+    snapshotType: "social";
+    socialSnapshot: StreamSocialSnapshot;
   }
   | {
     artifactType: TextArtifactType;
@@ -419,6 +467,8 @@ function createEmptyStreamCardsState(): StreamCardsState {
     riskReports: {},
     debates: {},
     marketSnapshot: null,
+    newsSnapshot: null,
+    socialSnapshot: null,
   };
 }
 
@@ -444,19 +494,85 @@ function toMarketSnapshot(value: unknown): MarketSnapshot | null {
   };
 }
 
+function toNewsItem(value: unknown): NewsItem | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<NewsItem>;
+  if (typeof item.title !== "string" || typeof item.summary !== "string") return null;
+  const sentimentScore = Number(item.sentiment?.score);
+  const sentimentLabel = item.sentiment?.label;
+  if (!Number.isFinite(sentimentScore)) return null;
+  if (sentimentLabel !== "positive" && sentimentLabel !== "negative" && sentimentLabel !== "neutral") return null;
+  return {
+    title: item.title,
+    summary: item.summary,
+    publisher: typeof item.publisher === "string" ? item.publisher : null,
+    publishedAt: typeof item.publishedAt === "string" ? item.publishedAt : null,
+    link: typeof item.link === "string" ? item.link : null,
+    sentiment: {
+      score: sentimentScore,
+      label: sentimentLabel,
+    },
+  };
+}
+
+function toNewsSnapshot(value: unknown): StreamNewsSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<AnalysisResult["stageBundle"]["news"]>;
+  const avgSentiment = Number(snapshot.avgSentiment);
+  if (!Number.isFinite(avgSentiment)) return null;
+  const items = Array.isArray(snapshot.items)
+    ? snapshot.items.map((item) => toNewsItem(item)).filter((item): item is NewsItem => item !== null)
+    : [];
+  return {
+    avgSentiment,
+    items,
+  };
+}
+
+function toSocialSnapshot(value: unknown): StreamSocialSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<AnalysisResult["stageBundle"]["social"]>;
+  const avgSentiment = Number(snapshot.avgSentiment);
+  if (!Number.isFinite(avgSentiment)) return null;
+  return {
+    avgSentiment,
+  };
+}
+
 function toArtifactUpdate(data: unknown): ArtifactUpdatePayload | null {
   if (!data || typeof data !== "object") return null;
   const payload = data as AnalyzeArtifactPayload;
   if (!payload.artifactType) return null;
 
   if (payload.artifactType === "snapshot") {
-    if (payload.snapshotType !== "market") return null;
-    const marketSnapshot = toMarketSnapshot(payload.payload);
-    if (!marketSnapshot) return null;
-    return {
-      artifactType: "snapshot",
-      marketSnapshot,
-    };
+    if (payload.snapshotType === "market") {
+      const marketSnapshot = toMarketSnapshot(payload.payload);
+      if (!marketSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "market",
+        marketSnapshot,
+      };
+    }
+    if (payload.snapshotType === "news") {
+      const newsSnapshot = toNewsSnapshot(payload.payload);
+      if (!newsSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "news",
+        newsSnapshot,
+      };
+    }
+    if (payload.snapshotType === "social") {
+      const socialSnapshot = toSocialSnapshot(payload.payload);
+      if (!socialSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "social",
+        socialSnapshot,
+      };
+    }
+    return null;
   }
 
   if (!payload.markdown || typeof payload.markdown !== "string") return null;
@@ -478,10 +594,18 @@ function applyArtifactUpdate(prev: StreamCardsState, payload: ArtifactUpdatePayl
     riskReports: { ...prev.riskReports },
     debates: { ...prev.debates },
     marketSnapshot: prev.marketSnapshot,
+    newsSnapshot: prev.newsSnapshot,
+    socialSnapshot: prev.socialSnapshot,
   };
 
   if (payload.artifactType === "snapshot") {
-    next.marketSnapshot = payload.marketSnapshot;
+    if (payload.snapshotType === "market") {
+      next.marketSnapshot = payload.marketSnapshot;
+    } else if (payload.snapshotType === "news") {
+      next.newsSnapshot = payload.newsSnapshot;
+    } else if (payload.snapshotType === "social") {
+      next.socialSnapshot = payload.socialSnapshot;
+    }
     return next;
   }
 
@@ -557,6 +681,37 @@ function toProgressText(data: unknown): string | null {
   return payload.message;
 }
 
+function progressFromStatus(status: string, isAnalyzing: boolean, hasResult: boolean): { percent: number; text: string } {
+  if (hasResult) return { percent: 100, text: "分析完成" };
+  const text = status.trim();
+  const stepMatch = text.match(/\[(\d+)\/(\d+)\]/);
+  if (stepMatch) {
+    const step = Number(stepMatch[1]);
+    const total = Number(stepMatch[2]);
+    if (Number.isFinite(step) && Number.isFinite(total) && total > 0) {
+      const percent = Math.max(8, Math.min(96, Math.round((step / total) * 100)));
+      const label = text.replace(/^\[\d+\/\d+\]\s*/, "") || "分析进行中";
+      return { percent, text: label };
+    }
+  }
+
+  const hints: Array<{ keywords: string[]; percent: number; text: string }> = [
+    { keywords: ["建立流式连接", "连接"], percent: 8, text: "正在建立连接" },
+    { keywords: ["采集", "快照", "数据"], percent: 22, text: "正在采集多源数据" },
+    { keywords: ["分析师", "并行研判"], percent: 44, text: "四位分析师并行研判" },
+    { keywords: ["辩论", "多空"], percent: 62, text: "多空辩论中" },
+    { keywords: ["交易计划", "经理"], percent: 74, text: "生成交易计划" },
+    { keywords: ["风控", "内阁", "裁定"], percent: 86, text: "风控内阁审议中" },
+    { keywords: ["收尾", "完成"], percent: 96, text: "收尾中" },
+  ];
+  for (const hint of hints) {
+    if (hint.keywords.some((k) => text.includes(k))) return { percent: hint.percent, text: hint.text };
+  }
+
+  if (isAnalyzing) return { percent: 14, text: text || "分析进行中" };
+  return { percent: 0, text: "" };
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   const raw = await response.text();
   if (!raw) return `HTTP ${response.status}`;
@@ -623,7 +778,7 @@ export function AnalysisDashboard({
   initialHasMore,
 }: DashboardProps) {
   const [symbol, setSymbol] = useState("");
-  const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
+  const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("quick");
   const [debateRounds, setDebateRounds] = useState("");
   const [period, setPeriod] = useState("6mo");
   const [interval, setInterval] = useState("1d");
@@ -635,6 +790,7 @@ export function AnalysisDashboard({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
+  const [showTopProgressDone, setShowTopProgressDone] = useState(false);
   const sidebarRef = useRef<HTMLElement | null>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const recordListRef = useRef<HTMLDivElement | null>(null);
@@ -731,6 +887,42 @@ export function AnalysisDashboard({
   );
   const recommendationCalibration = result?.recommendationCalibration ?? null;
 
+  const sentimentGaugeScore = useMemo(() => {
+    if (result) {
+      const newsScore = toSentimentGaugeScore(result.stageBundle.news.avgSentiment);
+      const socialScore = toSentimentGaugeScore(result.stageBundle.social.avgSentiment);
+      if (newsScore === null && socialScore === null) return null;
+      if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
+      return newsScore ?? socialScore;
+    }
+
+    const newsScore = toSentimentGaugeScore(streamCards.newsSnapshot?.avgSentiment);
+    const socialScore = toSentimentGaugeScore(streamCards.socialSnapshot?.avgSentiment);
+    if (newsScore === null && socialScore === null) return null;
+    if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
+    return newsScore ?? socialScore;
+  }, [result, streamCards.newsSnapshot, streamCards.socialSnapshot]);
+
+  const sentimentGaugeText = useMemo(() => sentimentGaugeLabel(sentimentGaugeScore), [sentimentGaugeScore]);
+
+  const sentimentSubScores = useMemo(() => {
+    if (result) {
+      return {
+        news: toSentimentGaugeScore(result.stageBundle.news.avgSentiment),
+        social: toSentimentGaugeScore(result.stageBundle.social.avgSentiment),
+      };
+    }
+    return {
+      news: toSentimentGaugeScore(streamCards.newsSnapshot?.avgSentiment),
+      social: toSentimentGaugeScore(streamCards.socialSnapshot?.avgSentiment),
+    };
+  }, [result, streamCards.newsSnapshot, streamCards.socialSnapshot]);
+
+  const latestNewsItems = useMemo<NewsItem[]>(() => {
+    if (result) return (result.stageBundle.news.items ?? []).slice(0, 8);
+    return (streamCards.newsSnapshot?.items ?? []).slice(0, 8);
+  }, [result, streamCards.newsSnapshot]);
+
   const streamHasContent = useMemo(() => {
     return Boolean(
       marketReportMarkdown ||
@@ -761,6 +953,12 @@ export function AnalysisDashboard({
 
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
 
+  const topProgress = useMemo(() => {
+    const base = progressFromStatus(status, isAnalyzing, Boolean(result));
+    const visible = isAnalyzing || showTopProgressDone;
+    return { ...base, visible };
+  }, [isAnalyzing, result, showTopProgressDone, status]);
+
   const togglePanelExpanded = useCallback((panelKey: string) => {
     setExpandedPanels((prev) => ({ ...prev, [panelKey]: !prev[panelKey] }));
   }, []);
@@ -770,9 +968,11 @@ export function AnalysisDashboard({
     if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
-      { id: "section-preliminary-plan", label: "交易计划" },
+      { id: "section-sentiment-gauge", label: "情绪仪表盘" },
+      { id: "section-news-feed", label: "News Feed" },
       { id: "section-analysts", label: "四位分析师" },
       { id: "section-debates", label: "多空辩论" },
+      { id: "section-preliminary-plan", label: "交易计划" },
     );
     for (const turn of displayedDebates) {
       targets.push({
@@ -848,6 +1048,12 @@ export function AnalysisDashboard({
     element.scrollTop = element.scrollHeight;
   }, [statusLog]);
 
+  useEffect(() => {
+    if (!showTopProgressDone) return;
+    const timer = window.setTimeout(() => setShowTopProgressDone(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [showTopProgressDone]);
+
   async function refreshLatestRecords(seed?: number): Promise<void> {
     const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
     const response = await fetch(`/api/records?limit=${RECORD_PAGE_SIZE}&_=${encodeURIComponent(nonce)}`, {
@@ -876,6 +1082,7 @@ export function AnalysisDashboard({
     }
 
     setIsAnalyzing(true);
+    setShowTopProgressDone(false);
     setStatusLog([]);
     setStreamCards(createEmptyStreamCardsState());
     setResult(null);
@@ -980,6 +1187,7 @@ export function AnalysisDashboard({
       setResult(finalResult);
       setStorageMode(finalStorage);
       pushStatusLine(`分析完成，记录 ID: ${finalRecordId}`);
+      setShowTopProgressDone(true);
 
       try {
         await refreshLatestRecords(finalRecordId);
@@ -1011,6 +1219,14 @@ export function AnalysisDashboard({
 
   return (
     <main className="shell">
+      {topProgress.visible ? (
+        <div className="analysis-top-progress" role="status" aria-live="polite">
+          <div className="analysis-top-progress-track" aria-hidden="true">
+            <div className="analysis-top-progress-fill" style={{ width: `${topProgress.percent}%` }} />
+          </div>
+          <span className="analysis-top-progress-label">{topProgress.text}</span>
+        </div>
+      ) : null}
       <div className="bg-orb orb-a" />
       <div className="bg-orb orb-b" />
 
@@ -1275,19 +1491,48 @@ export function AnalysisDashboard({
                   )}
                 </article>
 
-                <article className="panel anchor-target" id="section-preliminary-plan">
-                  <h2>研究主管初步交易计划</h2>
-                  {preliminaryPlanMarkdown ? (
-                    <CollapsibleMarkdown
-                      panelKey="preliminary-plan"
-                      markdown={preliminaryPlanMarkdown}
-                      expanded={Boolean(expandedPanels["preliminary-plan"])}
-                      onToggle={togglePanelExpanded}
-                    />
-                  ) : (
-                    <div className="empty-state">
-                      {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
+              </section>
+
+              <section className="grid cols-2">
+                <article className="panel anchor-target" id="section-sentiment-gauge">
+                  <h2>情绪仪表盘</h2>
+                  {sentimentGaugeScore !== null ? (
+                    <div className="sentiment-panel">
+                      <SentimentGauge score={sentimentGaugeScore} />
+                      <p className="sentiment-panel-label">{sentimentGaugeText}</p>
+                      <p className="sentiment-panel-meta">
+                        新闻情绪 {sentimentSubScores.news ?? "--"} · 社媒情绪 {sentimentSubScores.social ?? "--"}
+                      </p>
                     </div>
+                  ) : (
+                    <div className="empty-state">{isAnalyzing ? "情绪信号汇总中..." : "等待情绪数据"}</div>
+                  )}
+                </article>
+
+                <article className="panel anchor-target" id="section-news-feed">
+                  <h2>News Feed</h2>
+                  {latestNewsItems.length ? (
+                    <div className="news-feed-list">
+                      {latestNewsItems.map((item, index) => (
+                        <div className="news-feed-item" key={`${index}-${item.title}`}>
+                          <div className="news-feed-head">
+                            <strong>{item.title}</strong>
+                            <span>{formatNewsTimestamp(item.publishedAt)}</span>
+                          </div>
+                          {item.summary ? <p>{shorten(item.summary, 180)}</p> : null}
+                          <div className="news-feed-foot">
+                            <em>{item.publisher ?? "未知来源"}</em>
+                            {item.link ? (
+                              <a href={item.link} target="_blank" rel="noreferrer">
+                                查看
+                              </a>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">{isAnalyzing ? "资讯抓取中..." : "暂无资讯"}</div>
                   )}
                 </article>
               </section>
@@ -1394,6 +1639,22 @@ export function AnalysisDashboard({
                   </div>
                 ) : (
                   <div className="empty-state">{isAnalyzing ? "多空辩论尚未开始" : "暂无辩论记录"}</div>
+                )}
+              </section>
+
+              <section className="panel anchor-target" id="section-preliminary-plan">
+                <h2>研究主管初步交易计划</h2>
+                {preliminaryPlanMarkdown ? (
+                  <CollapsibleMarkdown
+                    panelKey="preliminary-plan"
+                    markdown={preliminaryPlanMarkdown}
+                    expanded={Boolean(expandedPanels["preliminary-plan"])}
+                    onToggle={togglePanelExpanded}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
+                  </div>
                 )}
               </section>
 
