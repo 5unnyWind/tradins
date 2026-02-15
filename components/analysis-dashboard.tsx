@@ -681,6 +681,37 @@ function toProgressText(data: unknown): string | null {
   return payload.message;
 }
 
+function progressFromStatus(status: string, isAnalyzing: boolean, hasResult: boolean): { percent: number; text: string } {
+  if (hasResult) return { percent: 100, text: "分析完成" };
+  const text = status.trim();
+  const stepMatch = text.match(/\[(\d+)\/(\d+)\]/);
+  if (stepMatch) {
+    const step = Number(stepMatch[1]);
+    const total = Number(stepMatch[2]);
+    if (Number.isFinite(step) && Number.isFinite(total) && total > 0) {
+      const percent = Math.max(8, Math.min(96, Math.round((step / total) * 100)));
+      const label = text.replace(/^\[\d+\/\d+\]\s*/, "") || "分析进行中";
+      return { percent, text: label };
+    }
+  }
+
+  const hints: Array<{ keywords: string[]; percent: number; text: string }> = [
+    { keywords: ["建立流式连接", "连接"], percent: 8, text: "正在建立连接" },
+    { keywords: ["采集", "快照", "数据"], percent: 22, text: "正在采集多源数据" },
+    { keywords: ["分析师", "并行研判"], percent: 44, text: "四位分析师并行研判" },
+    { keywords: ["辩论", "多空"], percent: 62, text: "多空辩论中" },
+    { keywords: ["交易计划", "经理"], percent: 74, text: "生成交易计划" },
+    { keywords: ["风控", "内阁", "裁定"], percent: 86, text: "风控内阁审议中" },
+    { keywords: ["收尾", "完成"], percent: 96, text: "收尾中" },
+  ];
+  for (const hint of hints) {
+    if (hint.keywords.some((k) => text.includes(k))) return { percent: hint.percent, text: hint.text };
+  }
+
+  if (isAnalyzing) return { percent: 14, text: text || "分析进行中" };
+  return { percent: 0, text: "" };
+}
+
 async function readErrorMessage(response: Response): Promise<string> {
   const raw = await response.text();
   if (!raw) return `HTTP ${response.status}`;
@@ -759,6 +790,7 @@ export function AnalysisDashboard({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
+  const [showTopProgressDone, setShowTopProgressDone] = useState(false);
   const sidebarRef = useRef<HTMLElement | null>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement | null>(null);
   const recordListRef = useRef<HTMLDivElement | null>(null);
@@ -921,6 +953,12 @@ export function AnalysisDashboard({
 
   const showAnalysisPanels = Boolean(result || isAnalyzing || streamHasContent);
 
+  const topProgress = useMemo(() => {
+    const base = progressFromStatus(status, isAnalyzing, Boolean(result));
+    const visible = isAnalyzing || showTopProgressDone;
+    return { ...base, visible };
+  }, [isAnalyzing, result, showTopProgressDone, status]);
+
   const togglePanelExpanded = useCallback((panelKey: string) => {
     setExpandedPanels((prev) => ({ ...prev, [panelKey]: !prev[panelKey] }));
   }, []);
@@ -1010,6 +1048,12 @@ export function AnalysisDashboard({
     element.scrollTop = element.scrollHeight;
   }, [statusLog]);
 
+  useEffect(() => {
+    if (!showTopProgressDone) return;
+    const timer = window.setTimeout(() => setShowTopProgressDone(false), 2200);
+    return () => window.clearTimeout(timer);
+  }, [showTopProgressDone]);
+
   async function refreshLatestRecords(seed?: number): Promise<void> {
     const nonce = Number.isFinite(seed) ? String(seed) : Date.now().toString();
     const response = await fetch(`/api/records?limit=${RECORD_PAGE_SIZE}&_=${encodeURIComponent(nonce)}`, {
@@ -1038,6 +1082,7 @@ export function AnalysisDashboard({
     }
 
     setIsAnalyzing(true);
+    setShowTopProgressDone(false);
     setStatusLog([]);
     setStreamCards(createEmptyStreamCardsState());
     setResult(null);
@@ -1142,6 +1187,7 @@ export function AnalysisDashboard({
       setResult(finalResult);
       setStorageMode(finalStorage);
       pushStatusLine(`分析完成，记录 ID: ${finalRecordId}`);
+      setShowTopProgressDone(true);
 
       try {
         await refreshLatestRecords(finalRecordId);
@@ -1173,6 +1219,14 @@ export function AnalysisDashboard({
 
   return (
     <main className="shell">
+      {topProgress.visible ? (
+        <div className="analysis-top-progress" role="status" aria-live="polite">
+          <div className="analysis-top-progress-track" aria-hidden="true">
+            <div className="analysis-top-progress-fill" style={{ width: `${topProgress.percent}%` }} />
+          </div>
+          <span className="analysis-top-progress-label">{topProgress.text}</span>
+        </div>
+      ) : null}
       <div className="bg-orb orb-a" />
       <div className="bg-orb orb-b" />
 
