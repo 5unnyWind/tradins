@@ -602,7 +602,14 @@ function CollapsibleMarkdown({
         >
           <span>{expanded ? "收起" : "展开完整内容"}</span>
           <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M7 10l5 5 5-5H7Z" />
+            <path
+              d="M9 6l6 6-6 6"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
         </button>
       ) : null}
