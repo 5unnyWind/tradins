@@ -306,10 +306,9 @@ function computeTechnicals(points: OHLCVPoint[]): TechnicalSnapshot {
   };
 }
 
-export async function fetchMarketSnapshot(symbol: string, period = "6mo", interval = "1d"): Promise<MarketSnapshot> {
-  const aShareSnapshot = await fetchAShareMarketSnapshot(symbol, period, interval);
-  if (aShareSnapshot) return aShareSnapshot;
+export type MarketDataProvider = "eastmoney" | "yahoo";
 
+async function fetchYahooMarketSnapshot(symbol: string, period: string, interval: string): Promise<MarketSnapshot> {
   const endpoint = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
     symbol,
   )}?range=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}&includePrePost=false&events=div%2Csplits`;
@@ -372,4 +371,28 @@ export async function fetchMarketSnapshot(symbol: string, period = "6mo", interv
     technicals,
     recentBars,
   };
+}
+
+export async function fetchMarketSnapshotWithProviders(
+  symbol: string,
+  period = "6mo",
+  interval = "1d",
+  providers: MarketDataProvider[] = ["eastmoney", "yahoo"],
+): Promise<MarketSnapshot> {
+  for (const provider of providers) {
+    if (provider === "eastmoney") {
+      const eastmoneySnapshot = await fetchAShareMarketSnapshot(symbol, period, interval);
+      if (eastmoneySnapshot) return eastmoneySnapshot;
+      continue;
+    }
+    if (provider === "yahoo") {
+      const yahooSnapshot = await fetchYahooMarketSnapshot(symbol, period, interval);
+      if (!yahooSnapshot.error) return yahooSnapshot;
+    }
+  }
+  return emptyMarketSnapshot(symbol, period, interval, "所有市场数据源均不可用");
+}
+
+export async function fetchMarketSnapshot(symbol: string, period = "6mo", interval = "1d"): Promise<MarketSnapshot> {
+  return fetchMarketSnapshotWithProviders(symbol, period, interval, ["eastmoney", "yahoo"]);
 }

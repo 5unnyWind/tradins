@@ -97,13 +97,9 @@ async function fetchAShareAnnouncementNews(symbol: string, limit: number): Promi
   };
 }
 
-export async function fetchNewsSnapshot(symbol: string, limit = 12): Promise<NewsSnapshot> {
-  const instrument = resolveInstrumentContext(symbol);
-  const sourceSymbol = instrument.newsSymbol;
+export type NewsDataProvider = "eastmoney" | "yahoo";
 
-  const aShareNews = await fetchAShareAnnouncementNews(sourceSymbol, limit);
-  if (aShareNews) return aShareNews;
-
+async function fetchYahooNewsSnapshot(symbol: string, sourceSymbol: string, limit: number): Promise<NewsSnapshot> {
   const endpoint = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(
     sourceSymbol,
   )}&newsCount=${Math.max(1, limit)}&quotesCount=0`;
@@ -162,4 +158,39 @@ export async function fetchNewsSnapshot(symbol: string, limit = 12): Promise<New
     topics: topKeywords(corpus, 10),
     items,
   };
+}
+
+export async function fetchNewsSnapshotWithProviders(
+  symbol: string,
+  limit = 12,
+  providers: NewsDataProvider[] = ["eastmoney", "yahoo"],
+): Promise<NewsSnapshot> {
+  const instrument = resolveInstrumentContext(symbol);
+  const sourceSymbol = instrument.newsSymbol;
+
+  for (const provider of providers) {
+    if (provider === "eastmoney") {
+      const eastmoneySnapshot = await fetchAShareAnnouncementNews(sourceSymbol, limit);
+      if (eastmoneySnapshot) return eastmoneySnapshot;
+      continue;
+    }
+    if (provider === "yahoo") {
+      const yahooSnapshot = await fetchYahooNewsSnapshot(symbol, sourceSymbol, limit);
+      if (!yahooSnapshot.error) return yahooSnapshot;
+    }
+  }
+
+  return {
+    symbol,
+    count: 0,
+    distribution: { positive: 0, negative: 0, neutral: 0 },
+    avgSentiment: 0,
+    topics: [],
+    items: [],
+    error: "所有新闻数据源均不可用",
+  };
+}
+
+export async function fetchNewsSnapshot(symbol: string, limit = 12): Promise<NewsSnapshot> {
+  return fetchNewsSnapshotWithProviders(symbol, limit, ["eastmoney", "yahoo"]);
 }
