@@ -37,7 +37,7 @@ export interface AnalysisArtifactEvent {
   title: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
+  snapshotType?: "market" | "news" | "social";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -467,6 +467,18 @@ export async function runTradinsAnalysis(
       title: "市场快照",
       payload: sanitizeForJson(market),
     });
+  });
+  await emitArtifact(onEvent, {
+    artifactType: "snapshot",
+    snapshotType: "news",
+    title: "新闻快照",
+    payload: sanitizeForJson(stageBundle.news),
+  });
+  await emitArtifact(onEvent, {
+    artifactType: "snapshot",
+    snapshotType: "social",
+    title: "舆情快照",
+    payload: sanitizeForJson(stageBundle.social),
   });
 
   await nextProgress("analysts", "四位分析师并行研判中");

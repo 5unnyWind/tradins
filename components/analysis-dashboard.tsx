@@ -225,98 +225,6 @@ function formatNewsTimestamp(value: string | null): string {
   }).format(date);
 }
 
-function estimateSentimentFromText(text: string): number {
-  const normalized = text.toLowerCase();
-  const positive = ["bull", "buy", "beat", "growth", "rally", "outperform", "上涨", "看多", "利好", "超预期"];
-  const negative = ["bear", "sell", "miss", "drop", "downgrade", "risk", "下跌", "看空", "利空", "不及预期"];
-  let score = 0;
-  for (const keyword of positive) {
-    if (normalized.includes(keyword)) score += 1;
-  }
-  for (const keyword of negative) {
-    if (normalized.includes(keyword)) score -= 1;
-  }
-  if (score === 0) return 0;
-  return Math.max(-1, Math.min(1, score / 6));
-}
-
-function isStreamingMetaLine(text: string): boolean {
-  const normalized = text.toLowerCase();
-  const patterns = [
-    "count=",
-    "distribution=",
-    "avgsentiment",
-    "topics=",
-    "已落地事实",
-    "样本内",
-    "数据字段",
-    "实时流",
-    "新闻数量",
-    "情绪分布",
-    "平均情绪",
-  ];
-  return patterns.some((p) => normalized.includes(p));
-}
-
-function looksLikeNewsLine(text: string): boolean {
-  const hasUrl = /https?:\/\//i.test(text);
-  const hasListPrefix = /^([-*]\s+|\d+[.)]\s+|###\s+)/.test(text);
-  const hasWordChar = /[\u4e00-\u9fa5A-Za-z]/.test(text);
-  return (hasUrl || hasListPrefix) && hasWordChar;
-}
-
-function normalizeNewsTitle(text: string): string {
-  return text
-    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1")
-    .replace(/https?:\/\/\S+/g, "")
-    .replace(/[*_`#>\-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function parseStreamingNewsItems(markdown: string): NewsItem[] {
-  if (!markdown.trim()) return [];
-  const lines = markdown
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  const genericTitles = new Set(["新闻", "news", "资讯", "headline", "更新", "实时", "快讯", "summary", "摘要"]);
-  const seen = new Set<string>();
-  const items: NewsItem[] = [];
-  for (const line of lines) {
-    if (items.length >= 8) break;
-    if (!looksLikeNewsLine(line) || isStreamingMetaLine(line)) continue;
-
-    const stripped = line.replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, "").replace(/^###\s+/, "").trim();
-    if (!stripped || isStreamingMetaLine(stripped)) continue;
-
-    const match = stripped.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
-    const link = match?.[2] ?? (stripped.match(/https?:\/\/\S+/)?.[0] ?? null);
-    const titleRaw = (match?.[1] ?? stripped).replace(/\*\*/g, "").trim();
-    const normalizedTitle = normalizeNewsTitle(titleRaw);
-    if (normalizedTitle.length < 8 || genericTitles.has(normalizedTitle)) continue;
-    if (seen.has(normalizedTitle)) continue;
-    seen.add(normalizedTitle);
-
-    const summary = stripped.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1").replace(/https?:\/\/\S+/g, "").trim();
-    const s = estimateSentimentFromText(`${titleRaw} ${summary}`);
-    items.push({
-      title: titleRaw,
-      summary: summary || titleRaw,
-      publisher: "实时流",
-      publishedAt: null,
-      link,
-      sentiment: {
-        score: Number(s.toFixed(4)),
-        label: s > 0.15 ? "positive" : s < -0.15 ? "negative" : "neutral",
-      },
-    });
-  }
-  return items;
-}
-
 function getRecordDateKey(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
@@ -471,7 +379,7 @@ type AnalyzeArtifactPayload = {
   title?: string;
   markdown?: string;
   payload?: unknown;
-  snapshotType?: "market";
+  snapshotType?: "market" | "news" | "social";
   key?: "market" | "fundamentals" | "news" | "social";
   roundId?: number;
   side?: "bull" | "bear" | "risky" | "safe" | "neutral" | "judge";
@@ -497,12 +405,18 @@ type StreamDebateState = {
   bearMarkdown?: string;
 };
 
+type StreamNewsSnapshot = Pick<AnalysisResult["stageBundle"]["news"], "avgSentiment" | "items">;
+
+type StreamSocialSnapshot = Pick<AnalysisResult["stageBundle"]["social"], "avgSentiment">;
+
 type StreamCardsState = {
   analystReports: Partial<Record<AnalystArtifactKey, string>>;
   preliminaryPlan: string | null;
   riskReports: Partial<Record<RiskArtifactSide, string>>;
   debates: Record<number, StreamDebateState>;
   marketSnapshot: MarketSnapshot | null;
+  newsSnapshot: StreamNewsSnapshot | null;
+  socialSnapshot: StreamSocialSnapshot | null;
 };
 
 type StreamDebateTurn = {
@@ -520,7 +434,18 @@ type RenderDebateTurn = {
 type ArtifactUpdatePayload =
   | {
     artifactType: "snapshot";
+    snapshotType: "market";
     marketSnapshot: MarketSnapshot;
+  }
+  | {
+    artifactType: "snapshot";
+    snapshotType: "news";
+    newsSnapshot: StreamNewsSnapshot;
+  }
+  | {
+    artifactType: "snapshot";
+    snapshotType: "social";
+    socialSnapshot: StreamSocialSnapshot;
   }
   | {
     artifactType: TextArtifactType;
@@ -542,6 +467,8 @@ function createEmptyStreamCardsState(): StreamCardsState {
     riskReports: {},
     debates: {},
     marketSnapshot: null,
+    newsSnapshot: null,
+    socialSnapshot: null,
   };
 }
 
@@ -567,19 +494,85 @@ function toMarketSnapshot(value: unknown): MarketSnapshot | null {
   };
 }
 
+function toNewsItem(value: unknown): NewsItem | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<NewsItem>;
+  if (typeof item.title !== "string" || typeof item.summary !== "string") return null;
+  const sentimentScore = Number(item.sentiment?.score);
+  const sentimentLabel = item.sentiment?.label;
+  if (!Number.isFinite(sentimentScore)) return null;
+  if (sentimentLabel !== "positive" && sentimentLabel !== "negative" && sentimentLabel !== "neutral") return null;
+  return {
+    title: item.title,
+    summary: item.summary,
+    publisher: typeof item.publisher === "string" ? item.publisher : null,
+    publishedAt: typeof item.publishedAt === "string" ? item.publishedAt : null,
+    link: typeof item.link === "string" ? item.link : null,
+    sentiment: {
+      score: sentimentScore,
+      label: sentimentLabel,
+    },
+  };
+}
+
+function toNewsSnapshot(value: unknown): StreamNewsSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<AnalysisResult["stageBundle"]["news"]>;
+  const avgSentiment = Number(snapshot.avgSentiment);
+  if (!Number.isFinite(avgSentiment)) return null;
+  const items = Array.isArray(snapshot.items)
+    ? snapshot.items.map((item) => toNewsItem(item)).filter((item): item is NewsItem => item !== null)
+    : [];
+  return {
+    avgSentiment,
+    items,
+  };
+}
+
+function toSocialSnapshot(value: unknown): StreamSocialSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const snapshot = value as Partial<AnalysisResult["stageBundle"]["social"]>;
+  const avgSentiment = Number(snapshot.avgSentiment);
+  if (!Number.isFinite(avgSentiment)) return null;
+  return {
+    avgSentiment,
+  };
+}
+
 function toArtifactUpdate(data: unknown): ArtifactUpdatePayload | null {
   if (!data || typeof data !== "object") return null;
   const payload = data as AnalyzeArtifactPayload;
   if (!payload.artifactType) return null;
 
   if (payload.artifactType === "snapshot") {
-    if (payload.snapshotType !== "market") return null;
-    const marketSnapshot = toMarketSnapshot(payload.payload);
-    if (!marketSnapshot) return null;
-    return {
-      artifactType: "snapshot",
-      marketSnapshot,
-    };
+    if (payload.snapshotType === "market") {
+      const marketSnapshot = toMarketSnapshot(payload.payload);
+      if (!marketSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "market",
+        marketSnapshot,
+      };
+    }
+    if (payload.snapshotType === "news") {
+      const newsSnapshot = toNewsSnapshot(payload.payload);
+      if (!newsSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "news",
+        newsSnapshot,
+      };
+    }
+    if (payload.snapshotType === "social") {
+      const socialSnapshot = toSocialSnapshot(payload.payload);
+      if (!socialSnapshot) return null;
+      return {
+        artifactType: "snapshot",
+        snapshotType: "social",
+        socialSnapshot,
+      };
+    }
+    return null;
   }
 
   if (!payload.markdown || typeof payload.markdown !== "string") return null;
@@ -601,10 +594,18 @@ function applyArtifactUpdate(prev: StreamCardsState, payload: ArtifactUpdatePayl
     riskReports: { ...prev.riskReports },
     debates: { ...prev.debates },
     marketSnapshot: prev.marketSnapshot,
+    newsSnapshot: prev.newsSnapshot,
+    socialSnapshot: prev.socialSnapshot,
   };
 
   if (payload.artifactType === "snapshot") {
-    next.marketSnapshot = payload.marketSnapshot;
+    if (payload.snapshotType === "market") {
+      next.marketSnapshot = payload.marketSnapshot;
+    } else if (payload.snapshotType === "news") {
+      next.newsSnapshot = payload.newsSnapshot;
+    } else if (payload.snapshotType === "social") {
+      next.socialSnapshot = payload.socialSnapshot;
+    }
     return next;
   }
 
@@ -863,14 +864,12 @@ export function AnalysisDashboard({
       return newsScore ?? socialScore;
     }
 
-    const streamNewsRaw = streamCards.analystReports.news ?? "";
-    const streamSocialRaw = streamCards.analystReports.social ?? "";
-    const newsScore = toSentimentGaugeScore(estimateSentimentFromText(streamNewsRaw));
-    const socialScore = toSentimentGaugeScore(estimateSentimentFromText(streamSocialRaw));
-    if (!streamNewsRaw.trim() && !streamSocialRaw.trim()) return null;
+    const newsScore = toSentimentGaugeScore(streamCards.newsSnapshot?.avgSentiment);
+    const socialScore = toSentimentGaugeScore(streamCards.socialSnapshot?.avgSentiment);
+    if (newsScore === null && socialScore === null) return null;
     if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
     return newsScore ?? socialScore;
-  }, [result, streamCards.analystReports.news, streamCards.analystReports.social]);
+  }, [result, streamCards.newsSnapshot, streamCards.socialSnapshot]);
 
   const sentimentGaugeText = useMemo(() => sentimentGaugeLabel(sentimentGaugeScore), [sentimentGaugeScore]);
 
@@ -882,15 +881,15 @@ export function AnalysisDashboard({
       };
     }
     return {
-      news: toSentimentGaugeScore(estimateSentimentFromText(streamCards.analystReports.news ?? "")),
-      social: toSentimentGaugeScore(estimateSentimentFromText(streamCards.analystReports.social ?? "")),
+      news: toSentimentGaugeScore(streamCards.newsSnapshot?.avgSentiment),
+      social: toSentimentGaugeScore(streamCards.socialSnapshot?.avgSentiment),
     };
-  }, [result, streamCards.analystReports.news, streamCards.analystReports.social]);
+  }, [result, streamCards.newsSnapshot, streamCards.socialSnapshot]);
 
   const latestNewsItems = useMemo<NewsItem[]>(() => {
     if (result) return (result.stageBundle.news.items ?? []).slice(0, 8);
-    return parseStreamingNewsItems(streamCards.analystReports.news ?? "");
-  }, [result, streamCards.analystReports.news]);
+    return (streamCards.newsSnapshot?.items ?? []).slice(0, 8);
+  }, [result, streamCards.newsSnapshot]);
 
   const streamHasContent = useMemo(() => {
     return Boolean(
