@@ -788,6 +788,7 @@ export function AnalysisDashboard({
   const [streamCards, setStreamCards] = useState<StreamCardsState>(() => createEmptyStreamCardsState());
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktopLayout, setIsDesktopLayout] = useState(false);
   const [storageMode, setStorageMode] = useState<"vercel_postgres" | "memory">(initialStorageMode);
   const [expandedPanels, setExpandedPanels] = useState<Record<string, boolean>>({});
   const [showTopProgressDone, setShowTopProgressDone] = useState(false);
@@ -827,6 +828,7 @@ export function AnalysisDashboard({
   const records = pages.flatMap((page) => page.records);
   const recordsHasMore = pages[pages.length - 1]?.hasMore ?? false;
   const isLoadingMoreRecords = isValidatingRecords && size > pages.length;
+  const isSidebarVisible = isDesktopLayout || isSidebarOpen;
   const displayedMarketSnapshot = result?.stageBundle.market ?? streamCards.marketSnapshot;
 
   const chartData = useMemo(() => {
@@ -985,7 +987,22 @@ export function AnalysisDashboard({
   }, [showAnalysisPanels, displayedDebates]);
 
   useEffect(() => {
-    if (!isSidebarOpen) return;
+    const mediaQuery = window.matchMedia("(min-width: 1081px)");
+    const syncLayout = () => {
+      const desktop = mediaQuery.matches;
+      setIsDesktopLayout(desktop);
+      setIsSidebarOpen(desktop);
+    };
+
+    syncLayout();
+    mediaQuery.addEventListener("change", syncLayout);
+    return () => {
+      mediaQuery.removeEventListener("change", syncLayout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSidebarOpen || isDesktopLayout) return;
 
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target;
@@ -999,7 +1016,7 @@ export function AnalysisDashboard({
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
     };
-  }, [isSidebarOpen]);
+  }, [isDesktopLayout, isSidebarOpen]);
 
   function pushStatusLine(line: string) {
     setStatus(line);
@@ -1027,7 +1044,7 @@ export function AnalysisDashboard({
   }
 
   useEffect(() => {
-    if (!isSidebarOpen || !recordsHasMore || isLoadingMoreRecords) return;
+    if (!isSidebarVisible || !recordsHasMore || isLoadingMoreRecords) return;
     const element = recordListRef.current;
     if (!element) return;
 
@@ -1040,7 +1057,7 @@ export function AnalysisDashboard({
     return () => {
       window.cancelAnimationFrame(rafId);
     };
-  }, [isSidebarOpen, records.length, recordsHasMore, isLoadingMoreRecords, loadMoreRecords]);
+  }, [isSidebarVisible, records.length, recordsHasMore, isLoadingMoreRecords, loadMoreRecords]);
 
   useEffect(() => {
     const element = statusLogRef.current;
@@ -1233,9 +1250,9 @@ export function AnalysisDashboard({
       <div className="dashboard-layout">
         <aside
           ref={sidebarRef}
-          className={`panel records-sidebar records-drawer${isSidebarOpen ? " is-open" : ""}`}
+          className={`panel records-sidebar records-drawer${isSidebarVisible ? " is-open" : ""}`}
           id="records-drawer"
-          aria-hidden={!isSidebarOpen}
+          aria-hidden={!isSidebarVisible}
         >
           <div className="panel-header records-sidebar-header">
             <h2>分析记录</h2>
@@ -1302,14 +1319,17 @@ export function AnalysisDashboard({
         <button
           ref={sidebarToggleRef}
           type="button"
-          className={`records-drawer-toggle${isSidebarOpen ? " is-open" : ""}`}
-          aria-expanded={isSidebarOpen}
+          className={`records-drawer-toggle${isSidebarVisible ? " is-open" : ""}`}
+          aria-expanded={isSidebarVisible}
           aria-controls="records-drawer"
-          onClick={() => setIsSidebarOpen((prev) => !prev)}
+          onClick={() => {
+            if (isDesktopLayout) return;
+            setIsSidebarOpen((prev) => !prev);
+          }}
         >
-          {isSidebarOpen ? "收起记录" : "展开记录"}
+          {isSidebarVisible ? "收起记录" : "展开记录"}
         </button>
-        {isSidebarOpen ? (
+        {!isDesktopLayout && isSidebarOpen ? (
           <button
             type="button"
             className="records-drawer-backdrop"
@@ -1450,7 +1470,7 @@ export function AnalysisDashboard({
 
           {showAnalysisPanels ? (
             <>
-              <section className="grid cols-2">
+              <section className="grid">
                 <article className="panel anchor-target" id="section-market-snapshot">
                   <h2>市场快照</h2>
                   {snapshotTimeLabel ? <p className="snapshot-time">快照时间：{snapshotTimeLabel}</p> : null}
