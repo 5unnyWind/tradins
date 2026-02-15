@@ -596,11 +596,14 @@ function CollapsibleMarkdown({
       {collapsible ? (
         <button
           type="button"
-          className="collapsible-markdown-toggle"
+          className={`collapsible-markdown-toggle${expanded ? " is-expanded" : ""}`}
           onClick={() => onToggle(panelKey)}
           aria-expanded={expanded}
         >
-          {expanded ? "收起" : "展开完整内容"}
+          <span>{expanded ? "收起" : "展开完整内容"}</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M7 10l5 5 5-5H7Z" />
+          </svg>
         </button>
       ) : null}
     </div>
