@@ -778,7 +778,7 @@ export function AnalysisDashboard({
   initialHasMore,
 }: DashboardProps) {
   const [symbol, setSymbol] = useState("");
-  const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("standard");
+  const [analysisMode, setAnalysisMode] = useState<"quick" | "standard" | "deep">("quick");
   const [debateRounds, setDebateRounds] = useState("");
   const [period, setPeriod] = useState("6mo");
   const [interval, setInterval] = useState("1d");
