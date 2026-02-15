@@ -977,13 +977,14 @@ button.record-item:hover:not(:disabled) {
 
 .collapsible-markdown {
   position: relative;
-  max-height: 1600px;
-  overflow: hidden;
-  transition: max-height 260ms ease;
+  max-height: none;
+  overflow: visible;
 }
 
 .collapsible-markdown.is-collapsed {
   max-height: 260px;
+  overflow: hidden;
+  transition: max-height 260ms ease;
 }
 
 .collapsible-markdown.is-collapsed::after {
