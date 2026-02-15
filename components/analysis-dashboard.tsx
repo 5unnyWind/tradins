@@ -968,11 +968,11 @@ export function AnalysisDashboard({
     if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
-      { id: "section-preliminary-plan", label: "交易计划" },
       { id: "section-sentiment-gauge", label: "情绪仪表盘" },
       { id: "section-news-feed", label: "News Feed" },
       { id: "section-analysts", label: "四位分析师" },
       { id: "section-debates", label: "多空辩论" },
+      { id: "section-preliminary-plan", label: "交易计划" },
     );
     for (const turn of displayedDebates) {
       targets.push({
@@ -1491,21 +1491,6 @@ export function AnalysisDashboard({
                   )}
                 </article>
 
-                <article className="panel anchor-target" id="section-preliminary-plan">
-                  <h2>研究主管初步交易计划</h2>
-                  {preliminaryPlanMarkdown ? (
-                    <CollapsibleMarkdown
-                      panelKey="preliminary-plan"
-                      markdown={preliminaryPlanMarkdown}
-                      expanded={Boolean(expandedPanels["preliminary-plan"])}
-                      onToggle={togglePanelExpanded}
-                    />
-                  ) : (
-                    <div className="empty-state">
-                      {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
-                    </div>
-                  )}
-                </article>
               </section>
 
               <section className="grid cols-2">
@@ -1654,6 +1639,22 @@ export function AnalysisDashboard({
                   </div>
                 ) : (
                   <div className="empty-state">{isAnalyzing ? "多空辩论尚未开始" : "暂无辩论记录"}</div>
+                )}
+              </section>
+
+              <section className="panel anchor-target" id="section-preliminary-plan">
+                <h2>研究主管初步交易计划</h2>
+                {preliminaryPlanMarkdown ? (
+                  <CollapsibleMarkdown
+                    panelKey="preliminary-plan"
+                    markdown={preliminaryPlanMarkdown}
+                    expanded={Boolean(expandedPanels["preliminary-plan"])}
+                    onToggle={togglePanelExpanded}
+                  />
+                ) : (
+                  <div className="empty-state">
+                    {isAnalyzing ? "研究主管正在汇总四位分析师观点..." : "等待交易计划"}
+                  </div>
                 )}
               </section>
 
