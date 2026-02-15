@@ -18,6 +18,10 @@ const MermaidView = dynamic(
   () => import("@/components/mermaid-view").then((m) => m.MermaidView),
   { ssr: false },
 );
+const ConfidenceGauge = dynamic(
+  () => import("@/components/confidence-gauge").then((m) => m.ConfidenceGauge),
+  { ssr: false },
+);
 
 const NO_CACHE_HEADERS: HeadersInit = {
   "Cache-Control": "no-cache",
@@ -1401,25 +1405,33 @@ export function AnalysisDashboard({
                 <h2>风控内阁与最终裁定</h2>
                 {recommendationCalibration ? (
                   <div className={`calibration-box level-${recommendationCalibration.confidenceLevel}`}>
-                    <div className="calibration-head">
-                      <strong>建议校准层</strong>
-                      <span className="calibration-confidence">
-                        置信度 {recommendationCalibration.confidence}/100（
-                        {confidenceLevelText(recommendationCalibration.confidenceLevel)}）
-                      </span>
+                    <div className="calibration-layout">
+                      <div className="calibration-main-content">
+                        <div className="calibration-head">
+                          <strong>建议校准层</strong>
+                          <span className="calibration-confidence">
+                            置信度 {recommendationCalibration.confidence}/100（
+                            {confidenceLevelText(recommendationCalibration.confidenceLevel)}）
+                          </span>
+                        </div>
+                        <p className="calibration-main">
+                          最终建议：{recommendationCalibration.finalRecommendation ?? "N/A"} · 内阁支持度：
+                          {recommendationCalibration.supportVotes}/{recommendationCalibration.totalVotes}
+                        </p>
+                        <p className="calibration-summary">{recommendationCalibration.summary}</p>
+                        {recommendationCalibration.conflicts.length ? (
+                          <ul className="calibration-list">
+                            {recommendationCalibration.conflicts.map((item, index) => (
+                              <li key={`conflict-${index}-${item}`}>{item}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                      <div className="calibration-gauge-wrap" aria-label="置信度仪表盘">
+                        <ConfidenceGauge score={recommendationCalibration.confidence} />
+                        <span className="calibration-gauge-label">决策置信度</span>
+                      </div>
                     </div>
-                    <p className="calibration-main">
-                      最终建议：{recommendationCalibration.finalRecommendation ?? "N/A"} · 内阁支持度：
-                      {recommendationCalibration.supportVotes}/{recommendationCalibration.totalVotes}
-                    </p>
-                    <p className="calibration-summary">{recommendationCalibration.summary}</p>
-                    {recommendationCalibration.conflicts.length ? (
-                      <ul className="calibration-list">
-                        {recommendationCalibration.conflicts.map((item, index) => (
-                          <li key={`conflict-${index}-${item}`}>{item}</li>
-                        ))}
-                      </ul>
-                    ) : null}
                   </div>
                 ) : null}
                 <div className="card-grid triple">
