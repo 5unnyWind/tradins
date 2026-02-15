@@ -240,6 +240,41 @@ function estimateSentimentFromText(text: string): number {
   return Math.max(-1, Math.min(1, score / 6));
 }
 
+function isStreamingMetaLine(text: string): boolean {
+  const normalized = text.toLowerCase();
+  const patterns = [
+    "count=",
+    "distribution=",
+    "avgsentiment",
+    "topics=",
+    "已落地事实",
+    "样本内",
+    "数据字段",
+    "实时流",
+    "新闻数量",
+    "情绪分布",
+    "平均情绪",
+  ];
+  return patterns.some((p) => normalized.includes(p));
+}
+
+function looksLikeNewsLine(text: string): boolean {
+  const hasUrl = /https?:\/\//i.test(text);
+  const hasListPrefix = /^([-*]\s+|\d+[.)]\s+|###\s+)/.test(text);
+  const hasWordChar = /[\u4e00-\u9fa5A-Za-z]/.test(text);
+  return (hasUrl || hasListPrefix) && hasWordChar;
+}
+
+function normalizeNewsTitle(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1")
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/[*_`#>\-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
 function parseStreamingNewsItems(markdown: string): NewsItem[] {
   if (!markdown.trim()) return [];
   const lines = markdown
@@ -247,21 +282,29 @@ function parseStreamingNewsItems(markdown: string): NewsItem[] {
     .map((line) => line.trim())
     .filter(Boolean);
 
+  const genericTitles = new Set(["新闻", "news", "资讯", "headline", "更新", "实时", "快讯", "summary", "摘要"]);
+  const seen = new Set<string>();
   const items: NewsItem[] = [];
   for (const line of lines) {
     if (items.length >= 8) break;
-    if (!/^[-*]\s+/.test(line) && !/^\d+[.)]\s+/.test(line) && !/^###\s+/.test(line)) continue;
+    if (!looksLikeNewsLine(line) || isStreamingMetaLine(line)) continue;
+
     const stripped = line.replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, "").replace(/^###\s+/, "").trim();
-    if (!stripped) continue;
+    if (!stripped || isStreamingMetaLine(stripped)) continue;
 
     const match = stripped.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
-    const title = (match?.[1] ?? stripped).replace(/\*\*/g, "").trim();
     const link = match?.[2] ?? (stripped.match(/https?:\/\/\S+/)?.[0] ?? null);
+    const titleRaw = (match?.[1] ?? stripped).replace(/\*\*/g, "").trim();
+    const normalizedTitle = normalizeNewsTitle(titleRaw);
+    if (normalizedTitle.length < 8 || genericTitles.has(normalizedTitle)) continue;
+    if (seen.has(normalizedTitle)) continue;
+    seen.add(normalizedTitle);
+
     const summary = stripped.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1").replace(/https?:\/\/\S+/g, "").trim();
-    const s = estimateSentimentFromText(`${title} ${summary}`);
+    const s = estimateSentimentFromText(`${titleRaw} ${summary}`);
     items.push({
-      title,
-      summary: summary || title,
+      title: titleRaw,
+      summary: summary || titleRaw,
       publisher: "实时流",
       publishedAt: null,
       link,
