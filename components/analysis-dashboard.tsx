@@ -225,6 +225,55 @@ function formatNewsTimestamp(value: string | null): string {
   }).format(date);
 }
 
+function estimateSentimentFromText(text: string): number {
+  const normalized = text.toLowerCase();
+  const positive = ["bull", "buy", "beat", "growth", "rally", "outperform", "上涨", "看多", "利好", "超预期"];
+  const negative = ["bear", "sell", "miss", "drop", "downgrade", "risk", "下跌", "看空", "利空", "不及预期"];
+  let score = 0;
+  for (const keyword of positive) {
+    if (normalized.includes(keyword)) score += 1;
+  }
+  for (const keyword of negative) {
+    if (normalized.includes(keyword)) score -= 1;
+  }
+  if (score === 0) return 0;
+  return Math.max(-1, Math.min(1, score / 6));
+}
+
+function parseStreamingNewsItems(markdown: string): NewsItem[] {
+  if (!markdown.trim()) return [];
+  const lines = markdown
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const items: NewsItem[] = [];
+  for (const line of lines) {
+    if (items.length >= 8) break;
+    if (!/^[-*]\s+/.test(line) && !/^\d+[.)]\s+/.test(line) && !/^###\s+/.test(line)) continue;
+    const stripped = line.replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, "").replace(/^###\s+/, "").trim();
+    if (!stripped) continue;
+
+    const match = stripped.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
+    const title = (match?.[1] ?? stripped).replace(/\*\*/g, "").trim();
+    const link = match?.[2] ?? (stripped.match(/https?:\/\/\S+/)?.[0] ?? null);
+    const summary = stripped.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1").replace(/https?:\/\/\S+/g, "").trim();
+    const s = estimateSentimentFromText(`${title} ${summary}`);
+    items.push({
+      title,
+      summary: summary || title,
+      publisher: "实时流",
+      publishedAt: null,
+      link,
+      sentiment: {
+        score: Number(s.toFixed(4)),
+        label: s > 0.15 ? "positive" : s < -0.15 ? "negative" : "neutral",
+      },
+    });
+  }
+  return items;
+}
+
 function getRecordDateKey(value: string): string {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return value;
@@ -763,20 +812,42 @@ export function AnalysisDashboard({
   const recommendationCalibration = result?.recommendationCalibration ?? null;
 
   const sentimentGaugeScore = useMemo(() => {
-    if (!result) return null;
-    const newsScore = toSentimentGaugeScore(result.stageBundle.news.avgSentiment);
-    const socialScore = toSentimentGaugeScore(result.stageBundle.social.avgSentiment);
-    if (newsScore === null && socialScore === null) return null;
+    if (result) {
+      const newsScore = toSentimentGaugeScore(result.stageBundle.news.avgSentiment);
+      const socialScore = toSentimentGaugeScore(result.stageBundle.social.avgSentiment);
+      if (newsScore === null && socialScore === null) return null;
+      if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
+      return newsScore ?? socialScore;
+    }
+
+    const streamNewsRaw = streamCards.analystReports.news ?? "";
+    const streamSocialRaw = streamCards.analystReports.social ?? "";
+    const newsScore = toSentimentGaugeScore(estimateSentimentFromText(streamNewsRaw));
+    const socialScore = toSentimentGaugeScore(estimateSentimentFromText(streamSocialRaw));
+    if (!streamNewsRaw.trim() && !streamSocialRaw.trim()) return null;
     if (newsScore !== null && socialScore !== null) return Math.round(newsScore * 0.6 + socialScore * 0.4);
     return newsScore ?? socialScore;
-  }, [result]);
+  }, [result, streamCards.analystReports.news, streamCards.analystReports.social]);
 
   const sentimentGaugeText = useMemo(() => sentimentGaugeLabel(sentimentGaugeScore), [sentimentGaugeScore]);
 
+  const sentimentSubScores = useMemo(() => {
+    if (result) {
+      return {
+        news: toSentimentGaugeScore(result.stageBundle.news.avgSentiment),
+        social: toSentimentGaugeScore(result.stageBundle.social.avgSentiment),
+      };
+    }
+    return {
+      news: toSentimentGaugeScore(estimateSentimentFromText(streamCards.analystReports.news ?? "")),
+      social: toSentimentGaugeScore(estimateSentimentFromText(streamCards.analystReports.social ?? "")),
+    };
+  }, [result, streamCards.analystReports.news, streamCards.analystReports.social]);
+
   const latestNewsItems = useMemo<NewsItem[]>(() => {
-    if (!result) return [];
-    return (result.stageBundle.news.items ?? []).slice(0, 8);
-  }, [result]);
+    if (result) return (result.stageBundle.news.items ?? []).slice(0, 8);
+    return parseStreamingNewsItems(streamCards.analystReports.news ?? "");
+  }, [result, streamCards.analystReports.news]);
 
   const streamHasContent = useMemo(() => {
     return Boolean(
@@ -1349,7 +1420,7 @@ export function AnalysisDashboard({
                       <SentimentGauge score={sentimentGaugeScore} />
                       <p className="sentiment-panel-label">{sentimentGaugeText}</p>
                       <p className="sentiment-panel-meta">
-                        新闻情绪 {Math.round((toSentimentGaugeScore(result?.stageBundle.news.avgSentiment) ?? 0))} · 社媒情绪 {Math.round((toSentimentGaugeScore(result?.stageBundle.social.avgSentiment) ?? 0))}
+                        新闻情绪 {sentimentSubScores.news ?? "--"} · 社媒情绪 {sentimentSubScores.social ?? "--"}
                       </p>
                     </div>
                   ) : (
