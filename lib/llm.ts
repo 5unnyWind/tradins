@@ -20,9 +20,14 @@ function sleep(ms: number): Promise<void> {
 function readHeader(headers: unknown, name: string): string | null {
   if (!headers) return null;
   if (typeof headers === "object" && headers !== null) {
-    const get = (headers as { get?: (key: string) => string | null }).get;
-    if (typeof get === "function") {
-      return get(name);
+    const maybeHeaders = headers as { get?: unknown };
+    if (typeof maybeHeaders.get === "function") {
+      try {
+        const hit = (maybeHeaders.get as (key: string) => string | null).call(headers, name);
+        if (typeof hit === "string") return hit;
+      } catch {
+        // ignore and fall through to plain object access
+      }
     }
     const record = headers as Record<string, unknown>;
     const hit = record[name] ?? record[name.toLowerCase()] ?? record[name.toUpperCase()];

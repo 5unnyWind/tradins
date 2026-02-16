@@ -273,7 +273,7 @@ export interface ConclusionDriftReport {
   points: ConclusionDriftPoint[];
 }
 
-export type DataSourceKey = "yahoo" | "eastmoney" | "reddit";
+export type DataSourceKey = "yahoo" | "eastmoney" | "reddit" | "steam" | "hltv" | "liquipedia";
 
 export interface DataSourceHealthItem {
   source: DataSourceKey;

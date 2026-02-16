@@ -57,6 +57,17 @@ SCHEDULER_ADMIN_PASSWORD=your_scheduler_password
 SCHEDULER_AUTH_SECRET=your_random_secret
 SCHEDULER_RUN_TOKEN=your_runner_token
 
+# CS2 Intel Pipeline（可选）
+INTEL_PIPELINE_ENABLED=true
+INTEL_RUN_TOKEN=your_intel_runner_token
+INTEL_GOODS_IDS=35263,835851
+INTEL_PIPELINE_PROVIDERS=valve,pro
+INTEL_VALVE_INTERVAL_MINUTES=180
+INTEL_PRO_INTERVAL_MINUTES=180
+
+# BUFF 预测 LLM 语义层（可选）
+BUFF_FORECAST_ENABLE_LLM=true
+
 # Vercel Postgres（可选）
 # POSTGRES_URL=...
 # POSTGRES_PRISMA_URL=...
@@ -84,8 +95,29 @@ npm run dev
 - 鉴权方式：
   - 自定义调用：`x-scheduler-token` 或 `Authorization: Bearer <SCHEDULER_RUN_TOKEN>`
   - Vercel Cron：设置 `CRON_SECRET`，平台会自动携带 `Authorization: Bearer <CRON_SECRET>`
+- `scheduler/run` 会在执行分析任务后，自动触发 CS2 intel 落库 pipeline（可通过 `runIntel=false` 关闭，`intelForce=true` 强制执行）
 - `vercel.json` 已内置 Cron 配置（`/api/scheduler/run`）
   - 注意：Vercel Hobby 仅支持“每天一次”Cron。若需要分钟级调度，请升级 Pro 或使用外部 Cron 调 `POST/GET /api/scheduler/run`。
+
+## CS2 BUFF 数据源子页面
+
+- 路径：`/buff-cs2`
+- 接口（已实现）：
+  - `POST /api/buff/market`：首页列表族（`goods` / `goods/buying` / `goods/bundle` / `goods/all`）
+  - `POST /api/buff/goods/:goodsId`：商品详情聚合（`goods/info`、`goods_tab_list`、`sell_order`、`buy_order`、`bill_order`、`price_history/*`）
+  - `GET|POST /api/buff/price-history`：单独拉取价格走势（兼容接口）
+  - `GET|POST /api/buff/forecast`：融合价格动量、订单簿、Valve/职业事件冲击，输出趋势预测与操作建议
+    - 内置 LLM 语义层（事件结构化、商品关联、炒作/冲突识别、解释性建议），失败时自动降级为规则模型
+  - `GET|POST /api/valve/updates`：拉取 V 社官方变更事件流（`ISteamNews` + Steam RSS 增强）
+  - `GET|POST /api/valve/impact`：按 `goods_id` 联动 BUFF 价格主序列，输出事件后 `1h/24h/72h` 影响回放
+  - `GET|POST /api/pro/events`：拉取职业事件流（HLTV RSS）并用 Liquipedia 标注选手活跃/退役状态
+  - `GET|POST /api/pro/impact`：按 `goods_id` 计算职业事件关联分及 `1h/24h/72h` 影响回放
+  - `GET|POST /api/intel/run`：受 token 保护的落库 runner（写入 `intel_events/intel_impacts/intel_pipeline_runs`）
+  - `GET|POST /api/intel/evaluation`：输出历史样本评估（命中率/均值/相关性）
+  - `GET|POST /api/intel/alerts`：输出近窗口异动告警
+- 支持读取 `.env.local` 的 `BUFF_COOKIE`、`BUFF_CSRF_TOKEN`、`BUFF_USER_AGENT`
+- 职业事件源可选配置：`LIQUIPEDIA_USER_AGENT`（用于 Liquipedia API 合规访问标识）
+- 页面用途：展示列表筛选、单品挂单/成交/走势、端点状态、事件影响评估与告警
 
 ## 你会在页面看到什么
 
