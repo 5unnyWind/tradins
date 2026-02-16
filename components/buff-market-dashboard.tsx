@@ -14,6 +14,9 @@ const NO_CACHE_HEADERS: HeadersInit = {
   Pragma: "no-cache",
 };
 
+const BUFF_FAVORITES_STORAGE_KEY = "buff_cs2_market_favorites_v1";
+const BUFF_FAVORITES_LIMIT = 300;
+
 type BuffAuthSource = "request" | "env" | "none";
 type BuffMarketTab = "selling" | "buying" | "bundle" | "all";
 
@@ -91,6 +94,15 @@ type BuffMarketListItem = {
   transactedNum: number | null;
   steamPriceCny: number | null;
   hasBuffPriceHistory: boolean;
+};
+
+type BuffFavoriteItem = {
+  goodsId: number;
+  name: string | null;
+  shortName: string | null;
+  marketHashName: string | null;
+  iconUrl: string | null;
+  savedAt: string;
 };
 
 type BuffMarketListResult = {
@@ -704,6 +716,10 @@ function marketItemClass(selected: boolean): string {
   return `buff-market-item${selected ? " is-active" : ""}`;
 }
 
+function marketFavoriteButtonClass(active: boolean): string {
+  return `buff-market-fav-button${active ? " is-active" : ""}`;
+}
+
 function mergeMarketItems(current: BuffMarketListItem[], incoming: BuffMarketListItem[]): BuffMarketListItem[] {
   const merged = [...current];
   const existingGoodsIds = new Set(current.map((item) => item.goodsId));
@@ -713,6 +729,40 @@ function mergeMarketItems(current: BuffMarketListItem[], incoming: BuffMarketLis
     existingGoodsIds.add(item.goodsId);
   }
   return merged;
+}
+
+function normalizeFavoriteItems(input: unknown): BuffFavoriteItem[] {
+  if (!Array.isArray(input)) return [];
+  const normalized: BuffFavoriteItem[] = [];
+  const seen = new Set<number>();
+
+  for (const value of input) {
+    if (!value || typeof value !== "object") continue;
+    const candidate = value as Partial<BuffFavoriteItem>;
+    const goodsId = Number(candidate.goodsId);
+    if (!Number.isInteger(goodsId) || goodsId <= 0 || seen.has(goodsId)) continue;
+    seen.add(goodsId);
+    normalized.push({
+      goodsId,
+      name: typeof candidate.name === "string" ? candidate.name : null,
+      shortName: typeof candidate.shortName === "string" ? candidate.shortName : null,
+      marketHashName: typeof candidate.marketHashName === "string" ? candidate.marketHashName : null,
+      iconUrl: typeof candidate.iconUrl === "string" ? candidate.iconUrl : null,
+      savedAt: typeof candidate.savedAt === "string" ? candidate.savedAt : new Date().toISOString(),
+    });
+    if (normalized.length >= BUFF_FAVORITES_LIMIT) break;
+  }
+
+  return normalized;
+}
+
+function marketItemDisplayName(item: {
+  goodsId: number;
+  name: string | null;
+  shortName: string | null;
+  marketHashName: string | null;
+}): string {
+  return item.name ?? item.shortName ?? item.marketHashName ?? `goods_id ${item.goodsId}`;
 }
 
 function orderTitle(kind: BuffOrderListResult["kind"]): string {
@@ -913,6 +963,7 @@ export function BuffMarketDashboard() {
   const [manualGoodsId, setManualGoodsId] = useState("35263");
   const [cookie, setCookie] = useState("");
   const [csrfToken, setCsrfToken] = useState("");
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
 
   const [listLoading, setListLoading] = useState(false);
   const [listAppendLoading, setListAppendLoading] = useState(false);
@@ -946,6 +997,8 @@ export function BuffMarketDashboard() {
   const [intelLookbackHours, setIntelLookbackHours] = useState("48");
   const [intelEvaluation, setIntelEvaluation] = useState<IntelEvaluationApiResponse["result"] | null>(null);
   const [intelAlerts, setIntelAlerts] = useState<IntelAlertsApiResponse["result"] | null>(null);
+  const [favoriteItems, setFavoriteItems] = useState<BuffFavoriteItem[]>([]);
+  const [favoritesHydrated, setFavoritesHydrated] = useState(false);
 
   const bootstrappedRef = useRef(false);
   const marketListRef = useRef<HTMLDivElement | null>(null);
@@ -974,11 +1027,47 @@ export function BuffMarketDashboard() {
     return marketResult.items.find((item) => item.goodsId === selectedGoodsId) ?? null;
   }, [marketResult, selectedGoodsId]);
 
+  const favoriteGoodsIds = useMemo(() => {
+    return new Set(favoriteItems.map((item) => item.goodsId));
+  }, [favoriteItems]);
+
+  const displayedMarketItems = useMemo(() => {
+    const items = marketResult?.items ?? [];
+    if (!favoritesOnly) return items;
+    return items.filter((item) => favoriteGoodsIds.has(item.goodsId));
+  }, [favoriteGoodsIds, favoritesOnly, marketResult?.items]);
+
   const hasNextMarketPage = useMemo(() => {
     if (!marketResult) return false;
     const totalPage = marketResult.totalPage || 1;
     return marketResult.pageNum < totalPage;
   }, [marketResult]);
+
+  const selectedFavoritePayload = useMemo(() => {
+    if (selectedGoodsId === null) return null;
+    return {
+      goodsId: selectedGoodsId,
+      name: dashboard?.goodsInfo?.name ?? selectedItem?.name ?? null,
+      shortName: dashboard?.goodsInfo?.shortName ?? selectedItem?.shortName ?? null,
+      marketHashName: dashboard?.goodsInfo?.marketHashName ?? selectedItem?.marketHashName ?? null,
+      iconUrl: dashboard?.goodsInfo?.iconUrl ?? selectedItem?.iconUrl ?? null,
+    };
+  }, [
+    dashboard?.goodsInfo?.iconUrl,
+    dashboard?.goodsInfo?.marketHashName,
+    dashboard?.goodsInfo?.name,
+    dashboard?.goodsInfo?.shortName,
+    selectedGoodsId,
+    selectedItem?.iconUrl,
+    selectedItem?.marketHashName,
+    selectedItem?.name,
+    selectedItem?.shortName,
+  ]);
+
+  const isSelectedFavorite = useMemo(() => {
+    if (selectedGoodsId === null) return false;
+    return favoriteGoodsIds.has(selectedGoodsId);
+  }, [favoriteGoodsIds, selectedGoodsId]);
 
   const selectedIconUrl = useMemo(() => {
     return dashboard?.goodsInfo?.iconUrl ?? selectedItem?.iconUrl ?? null;
@@ -1028,6 +1117,46 @@ export function BuffMarketDashboard() {
       csrfToken: normalizedCsrf || undefined,
     };
   }, [cookie, csrfToken]);
+
+  const toggleFavorite = useCallback(
+    (item: Omit<BuffFavoriteItem, "savedAt">) => {
+      setFavoriteItems((previous) => {
+        const exists = previous.some((current) => current.goodsId === item.goodsId);
+        if (exists) {
+          return previous.filter((current) => current.goodsId !== item.goodsId);
+        }
+
+        const next: BuffFavoriteItem = {
+          ...item,
+          savedAt: new Date().toISOString(),
+        };
+        return [next, ...previous].slice(0, BUFF_FAVORITES_LIMIT);
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    try {
+      const rawValue = window.localStorage.getItem(BUFF_FAVORITES_STORAGE_KEY);
+      if (!rawValue) return;
+      const parsed = JSON.parse(rawValue) as unknown;
+      setFavoriteItems(normalizeFavoriteItems(parsed));
+    } catch {
+      setFavoriteItems([]);
+    } finally {
+      setFavoritesHydrated(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!favoritesHydrated) return;
+    try {
+      window.localStorage.setItem(BUFF_FAVORITES_STORAGE_KEY, JSON.stringify(favoriteItems));
+    } catch {
+      // Ignore quota or privacy mode failures.
+    }
+  }, [favoriteItems, favoritesHydrated]);
 
   const loadForecast = useCallback(
     async (goodsId: number) => {
@@ -1496,7 +1625,7 @@ export function BuffMarketDashboard() {
   useEffect(() => {
     const root = marketListRef.current;
     const target = marketListSentinelRef.current;
-    if (!root || !target || !hasNextMarketPage) return;
+    if (!root || !target || !hasNextMarketPage || favoritesOnly) return;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -1513,7 +1642,7 @@ export function BuffMarketDashboard() {
 
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasNextMarketPage, loadNextMarketPage]);
+  }, [favoritesOnly, hasNextMarketPage, loadNextMarketPage]);
 
   const onMarketSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1799,44 +1928,76 @@ export function BuffMarketDashboard() {
               )}
             </span>
           </div>
+          <div className="buff-market-toolbar">
+            <button
+              type="button"
+              className={`buff-market-filter-toggle${favoritesOnly ? " is-active" : ""}`}
+              onClick={() => setFavoritesOnly((current) => !current)}
+            >
+              {favoritesOnly ? "显示全部商品" : "只看收藏"}
+            </button>
+            <span className="buff-market-favorite-count">收藏 {favoriteItems.length} 项</span>
+          </div>
+
           <div className="buff-market-list" ref={marketListRef}>
-            {marketResult?.items.length ? (
+            {displayedMarketItems.length ? (
               <>
-                {marketResult.items.map((item) => (
-                  <button
-                    key={item.goodsId}
-                    type="button"
-                    className={marketItemClass(item.goodsId === selectedGoodsId)}
-                    onClick={() => {
-                      void onPickGoods(item.goodsId);
-                    }}
-                  >
-                    {item.iconUrl ? (
-                      <img
-                        className="buff-market-item-thumb"
-                        src={item.iconUrl}
-                        alt={item.name ?? `goods ${item.goodsId}`}
-                        loading="lazy"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : null}
-                    <div className="buff-market-item-head">
-                      <strong>{item.name ?? `goods_id ${item.goodsId}`}</strong>
-                      <span>#{item.goodsId}</span>
-                    </div>
-                    <p>{item.shortName ?? item.marketHashName ?? "-"}</p>
-                    <div className="buff-market-item-metrics">
-                      <span>在售 {fmtPrice(item.sellMinPrice)}</span>
-                      <span>求购 {fmtPrice(item.buyMaxPrice)}</span>
-                      <span>在售量 {fmtCount(item.sellNum)}</span>
-                      <span>求购量 {fmtCount(item.buyNum)}</span>
-                    </div>
-                  </button>
+                {displayedMarketItems.map((item) => (
+                  <div className="buff-market-item-wrap" key={item.goodsId}>
+                    <button
+                      type="button"
+                      className={marketFavoriteButtonClass(favoriteGoodsIds.has(item.goodsId))}
+                      onClick={() =>
+                        toggleFavorite({
+                          goodsId: item.goodsId,
+                          name: item.name,
+                          shortName: item.shortName,
+                          marketHashName: item.marketHashName,
+                          iconUrl: item.iconUrl,
+                        })
+                      }
+                      aria-label={favoriteGoodsIds.has(item.goodsId) ? "取消收藏商品" : "收藏商品"}
+                      title={`${favoriteGoodsIds.has(item.goodsId) ? "取消收藏" : "收藏"}：${marketItemDisplayName(item)}`}
+                    >
+                      {favoriteGoodsIds.has(item.goodsId) ? "★" : "☆"}
+                    </button>
+
+                    <button
+                      type="button"
+                      className={marketItemClass(item.goodsId === selectedGoodsId)}
+                      onClick={() => {
+                        void onPickGoods(item.goodsId);
+                      }}
+                    >
+                      {item.iconUrl ? (
+                        <img
+                          className="buff-market-item-thumb"
+                          src={item.iconUrl}
+                          alt={item.name ?? `goods ${item.goodsId}`}
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : null}
+                      <div className="buff-market-item-head">
+                        <strong>{item.name ?? `goods_id ${item.goodsId}`}</strong>
+                        <span>#{item.goodsId}</span>
+                      </div>
+                      <p>{item.shortName ?? item.marketHashName ?? "-"}</p>
+                      <div className="buff-market-item-metrics">
+                        <span>在售 {fmtPrice(item.sellMinPrice)}</span>
+                        <span>求购 {fmtPrice(item.buyMaxPrice)}</span>
+                        <span>在售量 {fmtCount(item.sellNum)}</span>
+                        <span>求购量 {fmtCount(item.buyNum)}</span>
+                      </div>
+                    </button>
+                  </div>
                 ))}
 
                 <div className="buff-market-list-sentinel" ref={marketListSentinelRef} aria-hidden="true" />
 
-                {listAppendLoading ? (
+                {favoritesOnly ? (
+                  <p className="buff-market-list-footnote">只显示已收藏商品（来自当前已加载分页）</p>
+                ) : listAppendLoading ? (
                   <p className="buff-market-list-footnote is-loading">正在加载下一页...</p>
                 ) : hasNextMarketPage ? (
                   <p className="buff-market-list-footnote">滚动到底自动加载下一页</p>
@@ -1845,7 +2006,7 @@ export function BuffMarketDashboard() {
                 )}
               </>
             ) : (
-              <p className="buff-muted">暂无列表数据。</p>
+              <p className="buff-muted">{favoritesOnly ? "暂无收藏商品，可在列表右上角点击 ☆ 收藏。" : "暂无列表数据。"}</p>
             )}
           </div>
         </article>
@@ -1857,6 +2018,19 @@ export function BuffMarketDashboard() {
             <span>
               {dashboard ? `goods_id=${dashboard.goodsId} · ${fmtTime(dashboard.fetchedAt)}` : "未加载"}
             </span>
+          </div>
+          <div className="buff-overview-actions">
+            <button
+              type="button"
+              className={`buff-overview-fav-toggle${isSelectedFavorite ? " is-active" : ""}`}
+              disabled={selectedFavoritePayload === null}
+              onClick={() => {
+                if (!selectedFavoritePayload) return;
+                toggleFavorite(selectedFavoritePayload);
+              }}
+            >
+              {isSelectedFavorite ? "已收藏" : "收藏商品"}
+            </button>
           </div>
 
           {selectedIconUrl ? (

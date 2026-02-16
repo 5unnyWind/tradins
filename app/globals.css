@@ -1842,12 +1842,57 @@ button.buff-secondary-action:hover:not(:disabled) {
   min-height: 560px;
 }
 
+.buff-market-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.buff-market-filter-toggle {
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(85, 120, 148, 0.52);
+  background: rgba(16, 28, 40, 0.82);
+  color: #b8d2e8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.buff-market-filter-toggle.is-active {
+  border-color: rgba(125, 196, 246, 0.72);
+  color: #d7edff;
+  background: rgba(28, 50, 68, 0.9);
+}
+
+button.buff-market-filter-toggle:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: rgba(120, 182, 228, 0.74);
+  background: rgba(24, 43, 60, 0.9);
+}
+
+.buff-market-favorite-count {
+  color: #8ca9c3;
+  font-size: 11px;
+}
+
 .buff-market-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
   gap: 8px;
   max-height: 700px;
   overflow: auto;
-  padding-right: 2px;
+  padding-right: 4px;
+}
+
+.buff-market-item-wrap {
+  position: relative;
+  width: 100%;
+  min-width: 0;
 }
 
 .buff-market-list-sentinel {
@@ -1890,10 +1935,46 @@ button.buff-secondary-action:hover:not(:disabled) {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: var(--surface-1);
-  padding: 10px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  padding-right: 48px;
   display: grid;
   gap: 6px;
   text-align: left;
+  transition: border-color 170ms ease, background-color 170ms ease, box-shadow 170ms ease;
+}
+
+.buff-market-fav-button {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(85, 120, 148, 0.56);
+  background: rgba(8, 16, 26, 0.82);
+  color: #97b7d3;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: inset 0 0 0 1px rgba(150, 195, 228, 0.12);
+  backdrop-filter: blur(2px);
+}
+
+.buff-market-fav-button.is-active {
+  border-color: rgba(255, 194, 79, 0.76);
+  color: #ffd06a;
+  background: rgba(52, 39, 15, 0.86);
+}
+
+button.buff-market-fav-button:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: rgba(133, 181, 217, 0.8);
+  background: rgba(17, 29, 42, 0.88);
 }
 
 .buff-market-item-thumb {
@@ -1908,8 +1989,9 @@ button.buff-secondary-action:hover:not(:disabled) {
 button.buff-market-item:hover:not(:disabled) {
   transform: none;
   filter: none;
-  border-color: #3f607b;
-  background: rgba(20, 32, 46, 0.9);
+  border-color: #4f7390;
+  background: rgba(23, 36, 52, 0.94);
+  box-shadow: 0 10px 24px rgba(2, 9, 18, 0.34);
 }
 
 .buff-market-item.is-active {
@@ -1925,8 +2007,11 @@ button.buff-market-item:hover:not(:disabled) {
 }
 
 .buff-market-item-head strong {
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 15px;
+  line-height: 1.42;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-market-item-head span {
@@ -1967,6 +2052,34 @@ button.buff-market-item:hover:not(:disabled) {
   background: rgba(45, 30, 12, 0.7);
   color: #f3cf9a;
   font-size: 12px;
+}
+
+.buff-overview-actions {
+  margin-bottom: 10px;
+}
+
+.buff-overview-fav-toggle {
+  min-height: 32px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(85, 120, 148, 0.56);
+  background: rgba(13, 24, 36, 0.84);
+  color: #b3cde4;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.buff-overview-fav-toggle.is-active {
+  border-color: rgba(255, 194, 79, 0.78);
+  color: #ffd06a;
+  background: rgba(51, 38, 14, 0.88);
+}
+
+button.buff-overview-fav-toggle:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: rgba(135, 189, 228, 0.76);
+  background: rgba(20, 35, 49, 0.9);
 }
 
 .buff-line-list {
@@ -2975,6 +3088,15 @@ button.buff-market-item:hover:not(:disabled) {
 
   .buff-query-grid {
     grid-template-columns: 1fr;
+  }
+
+  .buff-market-toolbar {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .buff-market-favorite-count {
+    width: 100%;
   }
 
   .buff-action-row {
