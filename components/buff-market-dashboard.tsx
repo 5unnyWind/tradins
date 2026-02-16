@@ -391,6 +391,118 @@ type ProImpactApiResponse = {
   error?: string;
 };
 
+type IntelProvider = "valve" | "pro";
+
+type IntelRunState = {
+  jobKey: string;
+  lastRanAt: string | null;
+  lastStatus: "idle" | "success" | "failed";
+  lastMessage: string | null;
+  updatedAt: string;
+};
+
+type IntelImpactRecord = {
+  id: number;
+  provider: IntelProvider;
+  goodsId: number;
+  goodsName: string | null;
+  eventId: string;
+  eventTime: string;
+  impactScore: number | null;
+  relevanceScore: number | null;
+  direction: string | null;
+  returnH1: number | null;
+  returnH24: number | null;
+  returnH72: number | null;
+  payload: Record<string, unknown>;
+  fetchedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type IntelEventRecord = {
+  id: number;
+  provider: IntelProvider;
+  eventId: string;
+  eventTime: string;
+  eventType: string | null;
+  severity: string | null;
+  title: string;
+  summary: string;
+  url: string | null;
+  payload: Record<string, unknown>;
+  fetchedAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type IntelEvaluationProviderMetrics = {
+  provider: IntelProvider;
+  sampleCount: number;
+  upRatePct: number | null;
+  avgReturnH24Pct: number | null;
+  avgAbsReturnH24Pct: number | null;
+  avgImpactScore: number | null;
+  avgRelevanceScore: number | null;
+  impactReturnCorrelation: number | null;
+};
+
+type IntelEvaluationReport = {
+  generatedAt: string;
+  lookbackDays: number;
+  goodsId: number | null;
+  metrics: IntelEvaluationProviderMetrics[];
+  topImpacts: IntelImpactRecord[];
+  recentEvents: IntelEventRecord[];
+  runState: IntelRunState[];
+};
+
+type IntelAlertItem = {
+  id: string;
+  provider: IntelProvider;
+  goodsId: number;
+  goodsName: string | null;
+  eventId: string;
+  eventTime: string;
+  title: string;
+  impactScore: number | null;
+  relevanceScore: number | null;
+  returnH24Pct: number | null;
+  direction: string | null;
+  severity: "high" | "medium";
+  reasons: string[];
+  payload: Record<string, unknown>;
+};
+
+type IntelAlertsReport = {
+  generatedAt: string;
+  lookbackHours: number;
+  thresholds: {
+    impactScore: number;
+    return24AbsPct: number;
+    relevanceScore: number;
+  };
+  alerts: IntelAlertItem[];
+};
+
+type IntelEvaluationApiResponse = {
+  ok?: boolean;
+  result?: {
+    storage: "vercel_postgres" | "local";
+    report: IntelEvaluationReport;
+  };
+  error?: string;
+};
+
+type IntelAlertsApiResponse = {
+  ok?: boolean;
+  result?: {
+    storage: "vercel_postgres" | "local";
+    report: IntelAlertsReport;
+  };
+  error?: string;
+};
+
 type SourceBlueprint = {
   title: string;
   freshness: string;
@@ -606,6 +718,38 @@ function proDirectionClass(direction: ProImpactDirection): string {
   return `buff-impact-direction is-${direction}`;
 }
 
+function intelProviderText(provider: IntelProvider): string {
+  return provider === "valve" ? "Valve 官方" : "职业事件";
+}
+
+function intelRunStatusText(status: IntelRunState["lastStatus"]): string {
+  if (status === "success") return "成功";
+  if (status === "failed") return "失败";
+  return "空闲";
+}
+
+function intelAlertSeverityText(severity: IntelAlertItem["severity"]): string {
+  return severity === "high" ? "高" : "中";
+}
+
+function intelAlertSeverityClass(severity: IntelAlertItem["severity"]): string {
+  return `buff-alert-pill is-${severity}`;
+}
+
+function intelDirectionClass(direction: string | null): string {
+  if (direction === "up" || direction === "down" || direction === "flat" || direction === "insufficient") {
+    return `buff-impact-direction is-${direction}`;
+  }
+  return "buff-impact-direction is-insufficient";
+}
+
+function intelDirectionText(direction: string | null): string {
+  if (direction === "up") return "上行";
+  if (direction === "down") return "下行";
+  if (direction === "flat") return "震荡";
+  return "样本不足";
+}
+
 export function BuffMarketDashboard() {
   const [tab, setTab] = useState<BuffMarketTab>("selling");
   const [pageNum, setPageNum] = useState("1");
@@ -624,12 +768,16 @@ export function BuffMarketDashboard() {
   const [valveImpactLoading, setValveImpactLoading] = useState(false);
   const [proLoading, setProLoading] = useState(false);
   const [proImpactLoading, setProImpactLoading] = useState(false);
+  const [intelEvaluationLoading, setIntelEvaluationLoading] = useState(false);
+  const [intelAlertsLoading, setIntelAlertsLoading] = useState(false);
   const [listStatus, setListStatus] = useState("");
   const [detailStatus, setDetailStatus] = useState("");
   const [valveStatus, setValveStatus] = useState("");
   const [valveImpactStatus, setValveImpactStatus] = useState("");
   const [proStatus, setProStatus] = useState("");
   const [proImpactStatus, setProImpactStatus] = useState("");
+  const [intelEvaluationStatus, setIntelEvaluationStatus] = useState("");
+  const [intelAlertsStatus, setIntelAlertsStatus] = useState("");
 
   const [selectedGoodsId, setSelectedGoodsId] = useState<number | null>(null);
   const [marketResult, setMarketResult] = useState<BuffMarketListResult | null>(null);
@@ -638,6 +786,10 @@ export function BuffMarketDashboard() {
   const [valveImpact, setValveImpact] = useState<ValveImpactResult | null>(null);
   const [proEvents, setProEvents] = useState<ProPlayerEventsResult | null>(null);
   const [proImpact, setProImpact] = useState<ProImpactResult | null>(null);
+  const [intelLookbackDays, setIntelLookbackDays] = useState("60");
+  const [intelLookbackHours, setIntelLookbackHours] = useState("48");
+  const [intelEvaluation, setIntelEvaluation] = useState<IntelEvaluationApiResponse["result"] | null>(null);
+  const [intelAlerts, setIntelAlerts] = useState<IntelAlertsApiResponse["result"] | null>(null);
 
   const bootstrappedRef = useRef(false);
 
@@ -816,6 +968,93 @@ export function BuffMarketDashboard() {
     [buildAuthPayload, days],
   );
 
+  const loadIntelEvaluation = useCallback(
+    async (goodsId: number | null) => {
+      setIntelEvaluationLoading(true);
+      setIntelEvaluationStatus("");
+
+      try {
+        const lookbackDays = Number(intelLookbackDays);
+        if (!Number.isInteger(lookbackDays) || lookbackDays < 1 || lookbackDays > 3650) {
+          throw new Error("评估窗口需为 1-3650 天整数");
+        }
+
+        const response = await fetch("/api/intel/evaluation", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            lookbackDays,
+            goodsId: goodsId ?? undefined,
+          }),
+        });
+
+        const data = (await response.json()) as IntelEvaluationApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setIntelEvaluation(data.result);
+        const sampleCount = data.result.report.metrics.reduce((acc, item) => acc + item.sampleCount, 0);
+        setIntelEvaluationStatus(
+          `评估刷新成功：${fmtTime(data.result.report.generatedAt)} · 样本 ${fmtCount(sampleCount)} · ${data.result.storage}`,
+        );
+      } catch (error) {
+        setIntelEvaluation(null);
+        setIntelEvaluationStatus(`评估刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIntelEvaluationLoading(false);
+      }
+    },
+    [intelLookbackDays],
+  );
+
+  const loadIntelAlerts = useCallback(
+    async (goodsId: number | null) => {
+      setIntelAlertsLoading(true);
+      setIntelAlertsStatus("");
+
+      try {
+        const lookbackHours = Number(intelLookbackHours);
+        if (!Number.isInteger(lookbackHours) || lookbackHours < 1 || lookbackHours > 24 * 30) {
+          throw new Error("告警窗口需为 1-720 小时整数");
+        }
+
+        const response = await fetch("/api/intel/alerts", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            lookbackHours,
+            goodsId: goodsId ?? undefined,
+          }),
+        });
+
+        const data = (await response.json()) as IntelAlertsApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setIntelAlerts(data.result);
+        setIntelAlertsStatus(
+          `告警刷新成功：${fmtTime(data.result.report.generatedAt)} · ${data.result.report.alerts.length} 条 · ${data.result.storage}`,
+        );
+      } catch (error) {
+        setIntelAlerts(null);
+        setIntelAlertsStatus(`告警刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setIntelAlertsLoading(false);
+      }
+    },
+    [intelLookbackHours],
+  );
+
   const loadGoodsDashboard = useCallback(
     async (goodsId: number) => {
       setDetailLoading(true);
@@ -851,6 +1090,8 @@ export function BuffMarketDashboard() {
         setDetailStatus(`详情刷新成功：${fmtTime(data.result.fetchedAt)}`);
         void loadValveImpact(goodsId);
         void loadProImpact(goodsId);
+        void loadIntelEvaluation(goodsId);
+        void loadIntelAlerts(goodsId);
       } catch (error) {
         setDashboard(null);
         setValveImpact(null);
@@ -860,7 +1101,7 @@ export function BuffMarketDashboard() {
         setDetailLoading(false);
       }
     },
-    [buildAuthPayload, days, loadProImpact, loadValveImpact],
+    [buildAuthPayload, days, loadIntelAlerts, loadIntelEvaluation, loadProImpact, loadValveImpact],
   );
 
   const loadMarketList = useCallback(
@@ -952,7 +1193,9 @@ export function BuffMarketDashboard() {
     void loadMarketList(false);
     void loadValveUpdates();
     void loadProEvents();
-  }, [loadMarketList, loadProEvents, loadValveUpdates]);
+    void loadIntelEvaluation(null);
+    void loadIntelAlerts(null);
+  }, [loadIntelAlerts, loadIntelEvaluation, loadMarketList, loadProEvents, loadValveUpdates]);
 
   const onMarketSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1073,6 +1316,26 @@ export function BuffMarketDashboard() {
             <input type="number" min={1} max={120} value={days} onChange={(event) => setDays(event.target.value)} />
           </label>
           <label>
+            评估窗口 days
+            <input
+              type="number"
+              min={1}
+              max={3650}
+              value={intelLookbackDays}
+              onChange={(event) => setIntelLookbackDays(event.target.value)}
+            />
+          </label>
+          <label>
+            告警窗口 hours
+            <input
+              type="number"
+              min={1}
+              max={720}
+              value={intelLookbackHours}
+              onChange={(event) => setIntelLookbackHours(event.target.value)}
+            />
+          </label>
+          <label>
             search
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="例如 M4A4" />
           </label>
@@ -1137,6 +1400,12 @@ export function BuffMarketDashboard() {
           <button type="button" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
             按 goods_id 拉取详情
           </button>
+          <button type="button" disabled={intelEvaluationLoading} onClick={() => void loadIntelEvaluation(selectedGoodsId)}>
+            {intelEvaluationLoading ? "评估加载中..." : "刷新因子评估"}
+          </button>
+          <button type="button" disabled={intelAlertsLoading} onClick={() => void loadIntelAlerts(selectedGoodsId)}>
+            {intelAlertsLoading ? "告警加载中..." : "刷新异动告警"}
+          </button>
         </div>
 
         {listStatus ? <p className="status">{listStatus}</p> : null}
@@ -1145,6 +1414,8 @@ export function BuffMarketDashboard() {
         {valveImpactStatus ? <p className="status">{valveImpactStatus}</p> : null}
         {proStatus ? <p className="status">{proStatus}</p> : null}
         {proImpactStatus ? <p className="status">{proImpactStatus}</p> : null}
+        {intelEvaluationStatus ? <p className="status">{intelEvaluationStatus}</p> : null}
+        {intelAlertsStatus ? <p className="status">{intelAlertsStatus}</p> : null}
       </form>
 
       <section className="grid cols-2 buff-explorer-grid">
@@ -1618,6 +1889,169 @@ export function BuffMarketDashboard() {
             </div>
           )}
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h2>事件因子评估（持久化样本）</h2>
+          <span>
+            {intelEvaluation
+              ? `生成时间 ${fmtTime(intelEvaluation.report.generatedAt)} · 窗口 ${intelEvaluation.report.lookbackDays} 天`
+              : "未加载"}
+          </span>
+        </div>
+
+        <div className="buff-intel-run-list">
+          {(intelEvaluation?.report.runState ?? []).slice(0, 8).map((state) => (
+            <p key={state.jobKey}>
+              {state.jobKey} · {intelRunStatusText(state.lastStatus)} · {fmtTime(state.lastRanAt)} ·{" "}
+              {state.lastMessage ?? "-"}
+            </p>
+          ))}
+          {!intelEvaluation?.report.runState?.length ? <p className="buff-muted">暂无 pipeline 运行状态。</p> : null}
+        </div>
+
+        <div className="buff-impact-wrap">
+          <table className="buff-impact-table">
+            <thead>
+              <tr>
+                <th>来源</th>
+                <th>样本数</th>
+                <th>上涨率</th>
+                <th>24h 平均收益</th>
+                <th>|24h| 平均波动</th>
+                <th>平均影响分</th>
+                <th>平均关联分</th>
+                <th>相关系数</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(intelEvaluation?.report.metrics ?? []).map((metric) => (
+                <tr key={metric.provider}>
+                  <td>{intelProviderText(metric.provider)}</td>
+                  <td>{fmtCount(metric.sampleCount)}</td>
+                  <td>{fmtPct(metric.upRatePct)}</td>
+                  <td>{fmtSignedPct(metric.avgReturnH24Pct)}</td>
+                  <td>{fmtPct(metric.avgAbsReturnH24Pct)}</td>
+                  <td>{metric.avgImpactScore === null ? "N/A" : metric.avgImpactScore.toFixed(3)}</td>
+                  <td>{metric.avgRelevanceScore === null ? "N/A" : metric.avgRelevanceScore.toFixed(3)}</td>
+                  <td>{metric.impactReturnCorrelation === null ? "N/A" : metric.impactReturnCorrelation.toFixed(3)}</td>
+                </tr>
+              ))}
+              {!intelEvaluation?.report.metrics?.length ? (
+                <tr>
+                  <td colSpan={8}>暂无评估样本。</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="buff-impact-wrap">
+          <table className="buff-impact-table">
+            <thead>
+              <tr>
+                <th>事件时间</th>
+                <th>来源</th>
+                <th>商品</th>
+                <th>事件</th>
+                <th>24h</th>
+                <th>影响分</th>
+                <th>关联分</th>
+                <th>方向</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(intelEvaluation?.report.topImpacts ?? []).slice(0, 24).map((impact) => {
+                const payloadTitle =
+                  typeof impact.payload.title === "string" ? impact.payload.title : null;
+                return (
+                  <tr key={`${impact.provider}-${impact.goodsId}-${impact.eventId}-${impact.id}`}>
+                    <td>{fmtTime(impact.eventTime)}</td>
+                    <td>{intelProviderText(impact.provider)}</td>
+                    <td>{impact.goodsName ?? `goods_id ${impact.goodsId}`}</td>
+                    <td>{payloadTitle ?? impact.eventId}</td>
+                    <td>{fmtSignedPct(impact.returnH24)}</td>
+                    <td>{impact.impactScore === null ? "N/A" : impact.impactScore.toFixed(3)}</td>
+                    <td>{impact.relevanceScore === null ? "N/A" : impact.relevanceScore.toFixed(3)}</td>
+                    <td>
+                      <span className={intelDirectionClass(impact.direction)}>{intelDirectionText(impact.direction)}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!intelEvaluation?.report.topImpacts?.length ? (
+                <tr>
+                  <td colSpan={8}>暂无影响回放样本。</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-header">
+          <h2>异动告警（近窗口）</h2>
+          <span>
+            {intelAlerts
+              ? `生成时间 ${fmtTime(intelAlerts.report.generatedAt)} · ${intelAlerts.report.alerts.length} 条`
+              : "未加载"}
+          </span>
+        </div>
+
+        {intelAlerts ? (
+          <p className="buff-muted">
+            阈值：impact_score ≥ {intelAlerts.report.thresholds.impactScore}，|24h| ≥{" "}
+            {intelAlerts.report.thresholds.return24AbsPct}% ，关联分 ≥ {intelAlerts.report.thresholds.relevanceScore}
+          </p>
+        ) : null}
+
+        <div className="buff-impact-wrap">
+          <table className="buff-impact-table">
+            <thead>
+              <tr>
+                <th>等级</th>
+                <th>时间</th>
+                <th>来源</th>
+                <th>商品</th>
+                <th>事件</th>
+                <th>24h</th>
+                <th>影响分 / 关联分</th>
+                <th>方向</th>
+                <th>触发原因</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(intelAlerts?.report.alerts ?? []).map((alert) => (
+                <tr key={alert.id}>
+                  <td>
+                    <span className={intelAlertSeverityClass(alert.severity)}>
+                      {intelAlertSeverityText(alert.severity)}
+                    </span>
+                  </td>
+                  <td>{fmtTime(alert.eventTime)}</td>
+                  <td>{intelProviderText(alert.provider)}</td>
+                  <td>{alert.goodsName ?? `goods_id ${alert.goodsId}`}</td>
+                  <td>{alert.title}</td>
+                  <td>{fmtSignedPct(alert.returnH24Pct)}</td>
+                  <td>
+                    {(alert.impactScore ?? 0).toFixed(3)} / {(alert.relevanceScore ?? 0).toFixed(3)}
+                  </td>
+                  <td>
+                    <span className={intelDirectionClass(alert.direction)}>{intelDirectionText(alert.direction)}</span>
+                  </td>
+                  <td>{alert.reasons.join(", ")}</td>
+                </tr>
+              ))}
+              {!intelAlerts?.report.alerts?.length ? (
+                <tr>
+                  <td colSpan={9}>当前窗口无触发告警。</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="panel">

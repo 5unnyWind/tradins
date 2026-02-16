@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { runIntelPipeline } from "@/lib/intel-runner";
 import { runDueSchedulerTasks } from "@/lib/scheduler-runner";
 
 export const runtime = "nodejs";
@@ -36,6 +37,16 @@ function parseLimit(request: Request): number {
     : 3;
 }
 
+function parseBooleanParam(request: Request, key: string, fallback: boolean): boolean {
+  const url = new URL(request.url);
+  const raw = url.searchParams.get(key);
+  if (!raw) return fallback;
+  const normalized = raw.trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "off"].includes(normalized)) return false;
+  return fallback;
+}
+
 async function runScheduler(request: Request) {
   const allowedTokens = resolveAllowedTokens();
   if (!allowedTokens.length) {
@@ -53,10 +64,14 @@ async function runScheduler(request: Request) {
 
   try {
     const limit = parseLimit(request);
+    const runIntel = parseBooleanParam(request, "runIntel", true);
+    const intelForce = parseBooleanParam(request, "intelForce", false);
     const results = await runDueSchedulerTasks(limit);
+    const intelResult = runIntel ? await runIntelPipeline({ force: intelForce }) : null;
+    const ok = intelResult ? intelResult.ok : true;
     return NextResponse.json(
-      { ok: true, count: results.length, results },
-      { headers: noStoreHeaders },
+      { ok, count: results.length, results, intel: intelResult },
+      { status: ok ? 200 : 500, headers: noStoreHeaders },
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown scheduler run error";

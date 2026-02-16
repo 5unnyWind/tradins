@@ -2018,6 +2018,40 @@ button.buff-market-item:hover:not(:disabled) {
   color: #aebacd;
 }
 
+.buff-intel-run-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.buff-intel-run-list p {
+  margin: 0;
+  font-size: 12px;
+  color: #9eb5cb;
+}
+
+.buff-alert-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(30, 41, 59, 0.6);
+  color: #cbd5e1;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.buff-alert-pill.is-high {
+  border-color: rgba(244, 63, 94, 0.55);
+  color: #fda4af;
+}
+
+.buff-alert-pill.is-medium {
+  border-color: rgba(248, 113, 113, 0.45);
+  color: #fecaca;
+}
+
 .buff-factor-wrap {
   overflow: auto;
   border: 1px solid var(--line);
