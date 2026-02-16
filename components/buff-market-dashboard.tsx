@@ -157,14 +157,14 @@ type BuffGoodsTabsResult = {
 
 type BuffEndpointStatus = {
   key:
-    | "goodsInfo"
-    | "goodsTabs"
-    | "priceHistory"
-    | "historyDaysBuff"
-    | "historyDaysSteam"
-    | "sellOrders"
-    | "buyOrders"
-    | "billOrders";
+  | "goodsInfo"
+  | "goodsTabs"
+  | "priceHistory"
+  | "historyDaysBuff"
+  | "historyDaysSteam"
+  | "sellOrders"
+  | "buyOrders"
+  | "billOrders";
   endpoint: string;
   ok: boolean;
   code: string;
@@ -583,6 +583,11 @@ type FactorMapItem = {
   priority: "P0" | "P1" | "P2";
 };
 
+type QuickJumpTarget = {
+  id: string;
+  label: string;
+};
+
 const SOURCE_BLUEPRINT: SourceBlueprint[] = [
   {
     title: "BUFF 官方价格接口",
@@ -840,6 +845,52 @@ function intelDirectionText(direction: string | null): string {
   return "样本不足";
 }
 
+function loadingCardClassName(baseClassName: string, loading: boolean): string {
+  return loading ? `${baseClassName} is-loading-card` : baseClassName;
+}
+
+function renderCardLoading(loading: boolean, text: string) {
+  if (!loading) return null;
+  return (
+    <div className="buff-card-loading" aria-live="polite" aria-busy="true">
+      <span>{text}</span>
+    </div>
+  );
+}
+
+function HeaderRefreshButton({
+  loading,
+  disabled,
+  idleLabel,
+  loadingLabel,
+  onClick,
+}: {
+  loading: boolean;
+  disabled: boolean;
+  idleLabel: string;
+  loadingLabel: string;
+  onClick: () => void;
+}) {
+  const label = loading ? loadingLabel : idleLabel;
+  return (
+    <button
+      type="button"
+      className={`buff-panel-refresh${loading ? " is-loading" : ""}`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path
+          fill="currentColor"
+          d="M12 5a7 7 0 0 1 6.62 4.75H16v2h6V5h-2v3.24A9 9 0 0 0 3 12h2a7 7 0 0 1 7-7Zm7 6a7 7 0 0 1-7 7 7 7 0 0 1-6.62-4.75H8v-2H2v6h2v-3.24A9 9 0 0 0 21 12h-2Z"
+        />
+      </svg>
+    </button>
+  );
+}
+
 export function BuffMarketDashboard() {
   const [tab, setTab] = useState<BuffMarketTab>("selling");
   const [pageNum, setPageNum] = useState("1");
@@ -886,6 +937,23 @@ export function BuffMarketDashboard() {
 
   const bootstrappedRef = useRef(false);
 
+  const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
+    const targets: QuickJumpTarget[] = [
+      { id: "section-buff-query", label: "查询" },
+      { id: "section-buff-overview", label: "概览" },
+      { id: "section-buff-valve", label: "官方事件" },
+      { id: "section-buff-pro", label: "职业事件" },
+      { id: "section-buff-evaluation", label: "因子评估" },
+      { id: "section-buff-alerts", label: "异动告警" },
+      { id: "section-buff-sources", label: "数据源方案" },
+      { id: "section-buff-factors", label: "因子映射" },
+    ];
+    if (forecast) {
+      targets.splice(2, 0, { id: "section-buff-forecast", label: "趋势预测" });
+    }
+    return targets;
+  }, [forecast]);
+
   const selectedItem = useMemo(() => {
     if (!marketResult || !selectedGoodsId) return null;
     return marketResult.items.find((item) => item.goodsId === selectedGoodsId) ?? null;
@@ -894,6 +962,17 @@ export function BuffMarketDashboard() {
   const selectedIconUrl = useMemo(() => {
     return dashboard?.goodsInfo?.iconUrl ?? selectedItem?.iconUrl ?? null;
   }, [dashboard?.goodsInfo?.iconUrl, selectedItem?.iconUrl]);
+
+  const forecastGoodsLabel = useMemo(() => {
+    return (
+      forecast?.goodsName ??
+      dashboard?.goodsInfo?.name ??
+      dashboard?.goodsInfo?.shortName ??
+      selectedItem?.name ??
+      selectedItem?.shortName ??
+      null
+    );
+  }, [dashboard?.goodsInfo?.name, dashboard?.goodsInfo?.shortName, forecast?.goodsName, selectedItem?.name, selectedItem?.shortName]);
 
   const chartData = useMemo(() => {
     const points = dashboard?.priceHistory?.primarySeries?.points ?? [];
@@ -1415,6 +1494,12 @@ export function BuffMarketDashboard() {
     );
   };
 
+  function jumpToSection(targetId: string) {
+    const element = document.getElementById(targetId);
+    if (!element) return;
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="shell buff-shell">
       <section className="panel buff-head">
@@ -1426,111 +1511,115 @@ export function BuffMarketDashboard() {
           </p>
         </div>
         <div className="buff-head-actions">
-          <a className="hero-link-button" href="/">
-            返回分析页
-          </a>
           <a className="hero-link-button" href="/source-health">
             数据源健康
           </a>
         </div>
       </section>
 
-      <form className="panel buff-query-form" onSubmit={onMarketSubmit}>
-        <div className="buff-query-grid">
-          <label>
-            列表类型
-            <select value={tab} onChange={(event) => setTab(event.target.value as BuffMarketTab)}>
-              <option value="selling">selling（在售）</option>
-              <option value="buying">buying（求购）</option>
-              <option value="bundle">bundle（组合包）</option>
-              <option value="all">all（全量搜索）</option>
-            </select>
-          </label>
-          <label>
-            page_num
-            <input type="number" min={1} max={10000} value={pageNum} onChange={(event) => setPageNum(event.target.value)} />
-          </label>
-          <label>
-            page_size
-            <input type="number" min={1} max={80} value={pageSize} onChange={(event) => setPageSize(event.target.value)} />
-          </label>
-          <label>
-            走势天数 days
-            <input type="number" min={1} max={120} value={days} onChange={(event) => setDays(event.target.value)} />
-          </label>
-          <label>
-            评估窗口 days
-            <input
-              type="number"
-              min={1}
-              max={3650}
-              value={intelLookbackDays}
-              onChange={(event) => setIntelLookbackDays(event.target.value)}
-            />
-          </label>
-          <label>
-            告警窗口 hours
-            <input
-              type="number"
-              min={1}
-              max={720}
-              value={intelLookbackHours}
-              onChange={(event) => setIntelLookbackHours(event.target.value)}
-            />
-          </label>
-          <label>
-            search
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="例如 M4A4" />
-          </label>
-          <label>
-            category_group
-            <input
-              value={categoryGroup}
-              onChange={(event) => setCategoryGroup(event.target.value)}
-              placeholder="例如 rifle / weapon"
-            />
-          </label>
-          <label>
-            sort_by
-            <input value={sortBy} onChange={(event) => setSortBy(event.target.value)} placeholder="例如 price.desc" />
-          </label>
-          <label>
-            直达 goods_id
-            <input
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={manualGoodsId}
-              onChange={(event) => setManualGoodsId(event.target.value)}
-            />
+      <form id="section-buff-query" className="panel buff-query-form anchor-target" onSubmit={onMarketSubmit}>
+        <div className="buff-search-row">
+          <label className="buff-search-main">
+            名称搜索
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="例如 M4A4 / AK-47" />
           </label>
         </div>
 
-        <div className="buff-auth-grid">
-          <label>
-            临时 Cookie（可选）
-            <textarea
-              value={cookie}
-              onChange={(event) => setCookie(event.target.value)}
-              placeholder="不填则读取服务端 BUFF_COOKIE"
-              rows={3}
-            />
-          </label>
-          <label>
-            临时 csrf_token（可选）
-            <input
-              value={csrfToken}
-              onChange={(event) => setCsrfToken(event.target.value)}
-              placeholder="不填则读取服务端 BUFF_CSRF_TOKEN"
-            />
-          </label>
-        </div>
+        <details className="buff-advanced-filters">
+          <summary>更多筛选与参数</summary>
+          <div className="buff-query-grid">
+            <label>
+              列表类型
+              <select value={tab} onChange={(event) => setTab(event.target.value as BuffMarketTab)}>
+                <option value="selling">selling（在售）</option>
+                <option value="buying">buying（求购）</option>
+                <option value="bundle">bundle（组合包）</option>
+                <option value="all">all（全量搜索）</option>
+              </select>
+            </label>
+            <label>
+              page_num
+              <input type="number" min={1} max={10000} value={pageNum} onChange={(event) => setPageNum(event.target.value)} />
+            </label>
+            <label>
+              page_size
+              <input type="number" min={1} max={80} value={pageSize} onChange={(event) => setPageSize(event.target.value)} />
+            </label>
+            <label>
+              走势天数 days
+              <input type="number" min={1} max={120} value={days} onChange={(event) => setDays(event.target.value)} />
+            </label>
+            <label>
+              评估窗口 days
+              <input
+                type="number"
+                min={1}
+                max={3650}
+                value={intelLookbackDays}
+                onChange={(event) => setIntelLookbackDays(event.target.value)}
+              />
+            </label>
+            <label>
+              告警窗口 hours
+              <input
+                type="number"
+                min={1}
+                max={720}
+                value={intelLookbackHours}
+                onChange={(event) => setIntelLookbackHours(event.target.value)}
+              />
+            </label>
+            <label>
+              category_group
+              <input
+                value={categoryGroup}
+                onChange={(event) => setCategoryGroup(event.target.value)}
+                placeholder="例如 rifle / weapon"
+              />
+            </label>
+            <label>
+              sort_by
+              <input value={sortBy} onChange={(event) => setSortBy(event.target.value)} placeholder="例如 price.desc" />
+            </label>
+            <label>
+              直达 goods_id
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={manualGoodsId}
+                onChange={(event) => setManualGoodsId(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="buff-auth-grid">
+            <label>
+              临时 Cookie（可选）
+              <textarea
+                value={cookie}
+                onChange={(event) => setCookie(event.target.value)}
+                placeholder="不填则读取服务端 BUFF_COOKIE"
+                rows={3}
+              />
+            </label>
+            <label>
+              临时 csrf_token（可选）
+              <input
+                value={csrfToken}
+                onChange={(event) => setCsrfToken(event.target.value)}
+                placeholder="不填则读取服务端 BUFF_CSRF_TOKEN"
+              />
+            </label>
+          </div>
+        </details>
 
         <div className="buff-action-row">
-          <button type="submit" disabled={listLoading || detailLoading}>
+          <button type="submit" className="buff-primary-action" disabled={listLoading || detailLoading}>
             {listLoading ? "列表加载中..." : "刷新列表并拉取详情"}
           </button>
           <button
             type="button"
+            className="buff-secondary-action"
             disabled={detailLoading || selectedGoodsId === null}
             onClick={() => {
               if (selectedGoodsId !== null) {
@@ -1540,11 +1629,12 @@ export function BuffMarketDashboard() {
           >
             {detailLoading ? "详情加载中..." : "刷新当前商品详情"}
           </button>
-          <button type="button" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
+          <button type="button" className="buff-secondary-action" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
             按 goods_id 拉取详情
           </button>
           <button
             type="button"
+            className="buff-secondary-action"
             disabled={forecastLoading || selectedGoodsId === null}
             onClick={() => {
               if (selectedGoodsId !== null) {
@@ -1554,10 +1644,20 @@ export function BuffMarketDashboard() {
           >
             {forecastLoading ? "预测加载中..." : "刷新趋势预测"}
           </button>
-          <button type="button" disabled={intelEvaluationLoading} onClick={() => void loadIntelEvaluation(selectedGoodsId)}>
+          <button
+            type="button"
+            className="buff-secondary-action"
+            disabled={intelEvaluationLoading}
+            onClick={() => void loadIntelEvaluation(selectedGoodsId)}
+          >
             {intelEvaluationLoading ? "评估加载中..." : "刷新因子评估"}
           </button>
-          <button type="button" disabled={intelAlertsLoading} onClick={() => void loadIntelAlerts(selectedGoodsId)}>
+          <button
+            type="button"
+            className="buff-secondary-action"
+            disabled={intelAlertsLoading}
+            onClick={() => void loadIntelAlerts(selectedGoodsId)}
+          >
             {intelAlertsLoading ? "告警加载中..." : "刷新异动告警"}
           </button>
         </div>
@@ -1573,8 +1673,9 @@ export function BuffMarketDashboard() {
         {intelAlertsStatus ? <p className="status">{intelAlertsStatus}</p> : null}
       </form>
 
-      <section className="grid cols-2 buff-explorer-grid">
-        <article className="panel buff-market-panel">
+      <section id="section-buff-overview" className="grid cols-2 buff-explorer-grid anchor-target">
+        <article className={loadingCardClassName("panel buff-market-panel", listLoading)}>
+          {renderCardLoading(listLoading, "列表加载中...")}
           <div className="panel-header">
             <h2>首页列表</h2>
             <span>
@@ -1627,7 +1728,8 @@ export function BuffMarketDashboard() {
           </div>
         </article>
 
-        <article className="panel">
+        <article className={loadingCardClassName("panel", detailLoading)}>
+          {renderCardLoading(detailLoading, "商品详情加载中...")}
           <div className="panel-header">
             <h2>商品概览</h2>
             <span>
@@ -1699,25 +1801,19 @@ export function BuffMarketDashboard() {
             </div>
           ) : null}
 
-          <div className="buff-endpoint-grid">
-            {(dashboard?.endpointStatus ?? []).map((item) => (
-              <article className={endpointStatusClass(item)} key={`${item.key}-${item.endpoint}`}>
-                <h3>{item.key}</h3>
-                <p>{item.code}</p>
-                <p>{item.endpoint}</p>
-                {item.error ? <p>{item.error}</p> : null}
-              </article>
-            ))}
-            {!dashboard?.endpointStatus?.length ? <p className="buff-muted">暂无端点状态。</p> : null}
-          </div>
         </article>
       </section>
 
       {forecast ? (
-        <section className="panel buff-forecast-panel">
+        <section
+          id="section-buff-forecast"
+          className={loadingCardClassName("panel buff-forecast-panel anchor-target", forecastLoading)}
+        >
+          {renderCardLoading(forecastLoading, "趋势预测加载中...")}
           <div className="panel-header">
             <h2>综合因子趋势预测</h2>
             <span>
+              {forecastGoodsLabel ? `${forecastGoodsLabel} · ` : ""}
               goods_id={forecast.goodsId} · {fmtTime(forecast.fetchedAt)}
             </span>
           </div>
@@ -1801,7 +1897,8 @@ export function BuffMarketDashboard() {
       {dashboard ? (
         <>
           <section className="grid cols-2">
-            <article className="panel">
+            <article className={loadingCardClassName("panel", detailLoading)}>
+              {renderCardLoading(detailLoading, "图表加载中...")}
               <h2>主曲线走势</h2>
               {chartData.labels.length ? (
                 <PriceChart labels={chartData.labels} values={chartData.values} />
@@ -1809,7 +1906,8 @@ export function BuffMarketDashboard() {
                 <p className="buff-muted">暂无可视化点位。</p>
               )}
             </article>
-            <article className="panel">
+            <article className={loadingCardClassName("panel", detailLoading)}>
+              {renderCardLoading(detailLoading, "曲线字段加载中...")}
               <h2>价格曲线字段</h2>
               <div className="buff-line-list">
                 {(dashboard.priceHistory?.lines ?? []).map((line) => (
@@ -1829,7 +1927,8 @@ export function BuffMarketDashboard() {
             </article>
           </section>
 
-          <section className="panel">
+          <section className={loadingCardClassName("panel", detailLoading)}>
+            {renderCardLoading(detailLoading, "Tab 配置加载中...")}
             <div className="panel-header">
               <h2>详情页 Tab 配置</h2>
               <span>goods_tab_list</span>
@@ -1845,15 +1944,18 @@ export function BuffMarketDashboard() {
           </section>
 
           <section className="grid cols-3 buff-order-grid">
-            <article className="panel">
+            <article className={loadingCardClassName("panel", detailLoading)}>
+              {renderCardLoading(detailLoading, "在售挂单加载中...")}
               <h2>{orderTitle(dashboard.sellOrders?.kind ?? "sell")}</h2>
               {renderOrderPanel(dashboard.sellOrders)}
             </article>
-            <article className="panel">
+            <article className={loadingCardClassName("panel", detailLoading)}>
+              {renderCardLoading(detailLoading, "求购挂单加载中...")}
               <h2>{orderTitle(dashboard.buyOrders?.kind ?? "buy")}</h2>
               {renderOrderPanel(dashboard.buyOrders)}
             </article>
-            <article className="panel">
+            <article className={loadingCardClassName("panel", detailLoading)}>
+              {renderCardLoading(detailLoading, "成交记录加载中...")}
               <h2>{orderTitle(dashboard.billOrders?.kind ?? "bill")}</h2>
               {renderOrderPanel(dashboard.billOrders)}
             </article>
@@ -1861,16 +1963,21 @@ export function BuffMarketDashboard() {
         </>
       ) : null}
 
-      <section className="grid cols-2 buff-valve-grid">
-        <article className="panel">
-          <div className="panel-header">
-            <h2>V 社官方变更时间线</h2>
+      <section id="section-buff-valve" className="grid cols-2 buff-valve-grid anchor-target">
+        <article className={loadingCardClassName("panel", valveLoading)}>
+          {renderCardLoading(valveLoading, "官方事件加载中...")}
+          <div className="panel-header buff-panel-header">
+            <div className="buff-panel-title-row">
+              <h2>V 社官方变更时间线</h2>
+              <HeaderRefreshButton
+                loading={valveLoading}
+                disabled={valveLoading}
+                idleLabel="刷新官方事件"
+                loadingLabel="官方事件加载中"
+                onClick={() => void loadValveUpdates()}
+              />
+            </div>
             <span>{valveUpdates ? `最近 ${valveUpdates.updates.length} 条 · ${fmtTime(valveUpdates.fetchedAt)}` : "未加载"}</span>
-          </div>
-          <div className="buff-action-row">
-            <button type="button" disabled={valveLoading} onClick={() => void loadValveUpdates()}>
-              {valveLoading ? "官方事件加载中..." : "刷新官方事件"}
-            </button>
           </div>
 
           <div className="buff-valve-source-list">
@@ -1905,28 +2012,28 @@ export function BuffMarketDashboard() {
           </div>
         </article>
 
-        <article className="panel">
-          <div className="panel-header">
-            <h2>官方变更影响回放</h2>
+        <article className={loadingCardClassName("panel", valveImpactLoading)}>
+          {renderCardLoading(valveImpactLoading, "官方影响分析加载中...")}
+          <div className="panel-header buff-panel-header">
+            <div className="buff-panel-title-row">
+              <h2>官方变更影响回放</h2>
+              <HeaderRefreshButton
+                loading={valveImpactLoading}
+                disabled={valveImpactLoading || selectedGoodsId === null}
+                idleLabel="刷新事件影响回放"
+                loadingLabel="影响分析加载中"
+                onClick={() => {
+                  if (selectedGoodsId !== null) {
+                    void loadValveImpact(selectedGoodsId);
+                  }
+                }}
+              />
+            </div>
             <span>
               {selectedGoodsId
                 ? `goods_id=${selectedGoodsId} · 价格点 ${fmtCount(valveImpact?.pricePointCount ?? null)}`
                 : "请先选择商品"}
             </span>
-          </div>
-
-          <div className="buff-action-row">
-            <button
-              type="button"
-              disabled={valveImpactLoading || selectedGoodsId === null}
-              onClick={() => {
-                if (selectedGoodsId !== null) {
-                  void loadValveImpact(selectedGoodsId);
-                }
-              }}
-            >
-              {valveImpactLoading ? "影响分析加载中..." : "刷新事件影响回放"}
-            </button>
           </div>
 
           {valveImpact?.sourceStatus?.length ? (
@@ -1990,17 +2097,21 @@ export function BuffMarketDashboard() {
         </article>
       </section>
 
-      <section className="grid cols-2 buff-pro-grid">
-        <article className="panel">
-          <div className="panel-header">
-            <h2>职业选手事件时间线</h2>
+      <section id="section-buff-pro" className="grid cols-2 buff-pro-grid anchor-target">
+        <article className={loadingCardClassName("panel", proLoading)}>
+          {renderCardLoading(proLoading, "职业事件加载中...")}
+          <div className="panel-header buff-panel-header">
+            <div className="buff-panel-title-row">
+              <h2>职业选手事件时间线</h2>
+              <HeaderRefreshButton
+                loading={proLoading}
+                disabled={proLoading}
+                idleLabel="刷新职业事件"
+                loadingLabel="职业事件加载中"
+                onClick={() => void loadProEvents()}
+              />
+            </div>
             <span>{proEvents ? `最近 ${proEvents.events.length} 条 · ${fmtTime(proEvents.fetchedAt)}` : "未加载"}</span>
-          </div>
-
-          <div className="buff-action-row">
-            <button type="button" disabled={proLoading} onClick={() => void loadProEvents()}>
-              {proLoading ? "职业事件加载中..." : "刷新职业事件"}
-            </button>
           </div>
 
           <div className="buff-pro-source-list">
@@ -2040,28 +2151,28 @@ export function BuffMarketDashboard() {
           </div>
         </article>
 
-        <article className="panel">
-          <div className="panel-header">
-            <h2>职业事件影响回放</h2>
+        <article className={loadingCardClassName("panel", proImpactLoading)}>
+          {renderCardLoading(proImpactLoading, "职业影响分析加载中...")}
+          <div className="panel-header buff-panel-header">
+            <div className="buff-panel-title-row">
+              <h2>职业事件影响回放</h2>
+              <HeaderRefreshButton
+                loading={proImpactLoading}
+                disabled={proImpactLoading || selectedGoodsId === null}
+                idleLabel="刷新职业影响回放"
+                loadingLabel="职业影响分析加载中"
+                onClick={() => {
+                  if (selectedGoodsId !== null) {
+                    void loadProImpact(selectedGoodsId);
+                  }
+                }}
+              />
+            </div>
             <span>
               {selectedGoodsId
                 ? `goods_id=${selectedGoodsId} · 价格点 ${fmtCount(proImpact?.pricePointCount ?? null)}`
                 : "请先选择商品"}
             </span>
-          </div>
-
-          <div className="buff-action-row">
-            <button
-              type="button"
-              disabled={proImpactLoading || selectedGoodsId === null}
-              onClick={() => {
-                if (selectedGoodsId !== null) {
-                  void loadProImpact(selectedGoodsId);
-                }
-              }}
-            >
-              {proImpactLoading ? "职业影响分析加载中..." : "刷新职业影响回放"}
-            </button>
           </div>
 
           {proImpact?.sourceStatus?.length ? (
@@ -2131,7 +2242,8 @@ export function BuffMarketDashboard() {
         </article>
       </section>
 
-      <section className="panel">
+      <section id="section-buff-evaluation" className={loadingCardClassName("panel anchor-target", intelEvaluationLoading)}>
+        {renderCardLoading(intelEvaluationLoading, "事件因子评估加载中...")}
         <div className="panel-header">
           <h2>事件因子评估（持久化样本）</h2>
           <span>
@@ -2230,7 +2342,8 @@ export function BuffMarketDashboard() {
         </div>
       </section>
 
-      <section className="panel">
+      <section id="section-buff-alerts" className={loadingCardClassName("panel anchor-target", intelAlertsLoading)}>
+        {renderCardLoading(intelAlertsLoading, "异动告警加载中...")}
         <div className="panel-header">
           <h2>异动告警（近窗口）</h2>
           <span>
@@ -2294,10 +2407,10 @@ export function BuffMarketDashboard() {
         </div>
       </section>
 
-      <section className="panel">
+      <section id="section-buff-sources" className="panel anchor-target">
         <div className="panel-header">
           <h2>数据源获取方案</h2>
-          <span>接口全量落地后，下一步是事件因子和价格行为做联动建模</span>
+          {/* <span>接口全量落地后，下一步是事件因子和价格行为做联动建模</span> */}
         </div>
         <div className="buff-source-grid">
           {SOURCE_BLUEPRINT.map((item) => (
@@ -2324,10 +2437,10 @@ export function BuffMarketDashboard() {
         </div>
       </section>
 
-      <section className="panel">
+      <section id="section-buff-factors" className="panel anchor-target">
         <div className="panel-header">
           <h2>影响因子映射</h2>
-          <span>P0 先上线可量化数据，P1/P2 逐步扩展</span>
+          {/* <span>P0 先上线可量化数据，P1/P2 逐步扩展</span> */}
         </div>
         <div className="buff-factor-wrap">
           <table className="buff-factor-table">
@@ -2354,6 +2467,28 @@ export function BuffMarketDashboard() {
           </table>
         </div>
       </section>
+
+      <nav className="quick-nav-dock" role="navigation" aria-label="BUFF 区块快速定位">
+        <div className="quick-nav-rail">
+          {quickJumpTargets.map((target) => (
+            <button
+              key={target.id}
+              type="button"
+              className="quick-nav-pill"
+              onClick={() => jumpToSection(target.id)}
+            >
+              {target.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="quick-nav-pill quick-nav-pill-top"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            回到顶部
+          </button>
+        </div>
+      </nav>
     </main>
   );
 }

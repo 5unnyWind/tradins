@@ -326,6 +326,53 @@ button.records-drawer-backdrop:hover:not(:disabled) {
   margin-bottom: 12px;
 }
 
+.panel.is-loading-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.buff-card-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: rgba(8, 15, 24, 0.72);
+  backdrop-filter: blur(1.5px);
+  pointer-events: auto;
+}
+
+.buff-card-loading span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #d2e7fb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.buff-card-loading span::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid rgba(121, 196, 255, 0.28);
+  border-top-color: #7fcaff;
+  animation: buff-card-spin 900ms linear infinite;
+}
+
+@keyframes buff-card-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .form-panel {
   display: grid;
   gap: 10px;
@@ -1392,6 +1439,7 @@ button.record-item:hover:not(:disabled) {
 
 .buff-shell {
   width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+  padding-bottom: calc(96px + env(safe-area-inset-bottom));
 }
 
 .buff-head {
@@ -1424,6 +1472,50 @@ button.record-item:hover:not(:disabled) {
   gap: 10px;
 }
 
+.buff-search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.buff-search-main {
+  margin: 0;
+}
+
+.buff-advanced-filters {
+  border: 1px solid rgba(66, 96, 122, 0.52);
+  border-radius: 12px;
+  background: rgba(11, 19, 30, 0.56);
+  padding: 10px;
+}
+
+.buff-advanced-filters > summary {
+  cursor: pointer;
+  color: #c8dff5;
+  font-size: 13px;
+  font-weight: 700;
+  list-style: none;
+}
+
+.buff-advanced-filters > summary::-webkit-details-marker {
+  display: none;
+}
+
+.buff-advanced-filters > summary::after {
+  content: "展开";
+  margin-left: 8px;
+  color: #8fb3d6;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.buff-advanced-filters[open] > summary::after {
+  content: "收起";
+}
+
+.buff-advanced-filters[open] > summary {
+  margin-bottom: 10px;
+}
+
 .buff-query-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1444,6 +1536,68 @@ button.record-item:hover:not(:disabled) {
 
 .buff-action-row button {
   min-height: 40px;
+}
+
+.form-panel .buff-action-row .buff-primary-action {
+  box-shadow: 0 8px 22px rgba(2, 132, 199, 0.22);
+}
+
+.form-panel .buff-action-row .buff-secondary-action {
+  border: 1px solid #355771;
+  background: rgba(16, 29, 42, 0.88);
+  color: #b6cee4;
+  font-weight: 600;
+}
+
+button.buff-secondary-action:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: #4c7392;
+  background: rgba(24, 42, 58, 0.94);
+}
+
+.panel-header.buff-panel-header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.buff-panel-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.buff-panel-title-row h2 {
+  margin: 0;
+  min-width: 0;
+}
+
+.buff-panel-refresh {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.buff-panel-refresh svg {
+  width: 16px;
+  height: 16px;
+}
+
+.buff-panel-refresh.is-loading svg {
+  animation: source-health-spin 900ms linear infinite;
+}
+
+.buff-panel-refresh:disabled {
+  opacity: 0.65;
 }
 
 .buff-explorer-grid {
@@ -1791,6 +1945,7 @@ button.buff-market-item:hover:not(:disabled) {
   padding: 10px;
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .buff-valve-item.is-high {
@@ -1813,11 +1968,15 @@ button.buff-market-item:hover:not(:disabled) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 .buff-valve-item-head strong {
   font-size: 14px;
   line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-valve-item-head span {
@@ -1831,10 +1990,14 @@ button.buff-market-item:hover:not(:disabled) {
   color: var(--ink-soft);
   font-size: 12px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-valve-item-meta {
   color: #9eb8d1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-valve-link {
@@ -1892,6 +2055,7 @@ button.buff-market-item:hover:not(:disabled) {
   padding: 10px;
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .buff-pro-item.is-high {
@@ -1914,11 +2078,15 @@ button.buff-market-item:hover:not(:disabled) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
+  min-width: 0;
 }
 
 .buff-pro-item-head strong {
   font-size: 14px;
   line-height: 1.4;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-pro-item-head span {
@@ -1932,10 +2100,14 @@ button.buff-market-item:hover:not(:disabled) {
   color: var(--ink-soft);
   font-size: 12px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-pro-item-meta {
   color: #9eb8d1;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-pro-link {
@@ -1969,6 +2141,8 @@ button.buff-market-item:hover:not(:disabled) {
   font-size: 12px;
   line-height: 1.5;
   vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-impact-table th {
@@ -1985,6 +2159,8 @@ button.buff-market-item:hover:not(:disabled) {
   color: #8ea7be;
   font-size: 11px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .buff-impact-direction {
