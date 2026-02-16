@@ -251,7 +251,7 @@ type BuffForecastRiskLevel = "low" | "medium" | "high";
 type BuffForecastDecision = "buy" | "hold" | "reduce";
 
 type BuffForecastFactor = {
-  key: "momentum" | "orderBook" | "valveEvent" | "proEvent" | "attentionHeat";
+  key: "momentum" | "orderBook" | "valveEvent" | "proEvent" | "attentionHeat" | "llmEventIntel";
   label: string;
   score: number;
   weight: number;
@@ -287,6 +287,54 @@ type BuffForecastResult = {
     h72: number | null;
   };
   recommendation: BuffForecastRecommendation;
+  llm: {
+    enabled: boolean;
+    status: "ok" | "skipped" | "error";
+    model: string | null;
+    promptVersion: string;
+    sourceCount: number;
+    analyzedCount: number;
+    aggregate: {
+      signal: number;
+      hypeRisk: number;
+      conflictRisk: number;
+      reliability: number;
+      relevance: number;
+      coveragePct: number;
+    };
+    narrative: {
+      summary: string;
+      rationale: string[];
+      risks: string[];
+      advice: string[];
+    } | null;
+    eventInsights: Array<{
+      refId: string;
+      provider: "valve" | "pro";
+      publishedAt: string;
+      topic: string;
+      eventType:
+        | "valve_patch"
+        | "valve_economy"
+        | "pro_preference"
+        | "pro_retirement"
+        | "pro_roster"
+        | "social_hype"
+        | "rumor"
+        | "other";
+      direction: "up" | "down" | "neutral" | "mixed" | "unknown";
+      confidence: number;
+      relevance: number;
+      hypeScore: number;
+      reliability: number;
+      horizonHours: number;
+      duplicateOf: string | null;
+      conflictsWith: string[];
+      evidence: string[];
+      reason: string;
+    }>;
+    warning: string | null;
+  };
   snapshots: {
     latestPrice: number | null;
     returnH24Pct: number | null;
@@ -298,6 +346,10 @@ type BuffForecastResult = {
     valveSignal: number;
     proSignal: number;
     attentionHeatSignal: number;
+    llmSignal: number;
+    llmHypeRisk: number;
+    llmConflictRisk: number;
+    llmReliability: number;
     coveragePct: number;
   };
   factors: BuffForecastFactor[];
@@ -920,6 +972,46 @@ function forecastDecisionText(decision: BuffForecastDecision): string {
   return "建议观望";
 }
 
+function llmStatusText(status: BuffForecastResult["llm"]["status"]): string {
+  if (status === "ok") return "已启用";
+  if (status === "skipped") return "已跳过";
+  return "降级";
+}
+
+function llmStatusClass(status: BuffForecastResult["llm"]["status"]): string {
+  return `buff-forecast-badge llm-${status}`;
+}
+
+function llmDirectionText(direction: BuffForecastResult["llm"]["eventInsights"][number]["direction"]): string {
+  if (direction === "up") return "上行";
+  if (direction === "down") return "下行";
+  if (direction === "mixed") return "分化";
+  if (direction === "neutral") return "中性";
+  return "未知";
+}
+
+function llmDirectionClass(direction: BuffForecastResult["llm"]["eventInsights"][number]["direction"]): string {
+  if (direction === "up") return "buff-impact-direction is-up";
+  if (direction === "down") return "buff-impact-direction is-down";
+  if (direction === "mixed" || direction === "neutral") return "buff-impact-direction is-flat";
+  return "buff-impact-direction is-insufficient";
+}
+
+function llmProviderText(provider: BuffForecastResult["llm"]["eventInsights"][number]["provider"]): string {
+  return provider === "valve" ? "Valve" : "Pro";
+}
+
+function llmEventTypeText(type: BuffForecastResult["llm"]["eventInsights"][number]["eventType"]): string {
+  if (type === "valve_patch") return "补丁";
+  if (type === "valve_economy") return "经济更新";
+  if (type === "pro_preference") return "选手偏好";
+  if (type === "pro_retirement") return "退役事件";
+  if (type === "pro_roster") return "阵容变更";
+  if (type === "social_hype") return "社媒热度";
+  if (type === "rumor") return "传闻";
+  return "其他";
+}
+
 function intelProviderText(provider: IntelProvider): string {
   return provider === "valve" ? "Valve 官方" : "职业事件";
 }
@@ -1064,11 +1156,11 @@ export function BuffMarketDashboard() {
       { id: "section-buff-sources", label: "数据源方案" },
       { id: "section-buff-factors", label: "因子映射" },
     ];
-    if (forecast) {
+    if (forecast || forecastLoading) {
       targets.splice(2, 0, { id: "section-buff-forecast", label: "趋势预测" });
     }
     return targets;
-  }, [forecast]);
+  }, [forecast, forecastLoading]);
 
   const favoriteGoodsIds = useMemo(() => {
     return new Set(favoriteItems.map((item) => item.goodsId));
@@ -1267,6 +1359,7 @@ export function BuffMarketDashboard() {
     async (goodsId: number) => {
       setForecastLoading(true);
       setForecastStatus("");
+      setForecast((previous) => (previous?.goodsId === goodsId ? previous : null));
       try {
         const dayValue = Number(days);
         if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 120) {
@@ -1539,6 +1632,9 @@ export function BuffMarketDashboard() {
           throw new Error("days 需为 1-120 的整数");
         }
 
+        // 预测可与详情并行，避免首次选择时卡片长时间不出现。
+        void loadForecast(goodsId);
+
         const response = await fetch(`/api/buff/goods/${goodsId}`, {
           method: "POST",
           cache: "no-store",
@@ -1562,7 +1658,6 @@ export function BuffMarketDashboard() {
 
         setDashboard(data.result);
         setDetailStatus(`详情刷新成功：${fmtTime(data.result.fetchedAt)}`);
-        void loadForecast(goodsId);
         void loadValveImpact(goodsId);
         void loadProImpact(goodsId);
         void loadIntelEvaluation(goodsId);
@@ -2214,7 +2309,7 @@ export function BuffMarketDashboard() {
         </article>
       </section>
 
-      {forecast ? (
+      {selectedGoodsId !== null && (forecastLoading || forecast) ? (
         <section
           id="section-buff-forecast"
           className={loadingCardClassName("panel buff-forecast-panel anchor-target", forecastLoading)}
@@ -2224,10 +2319,13 @@ export function BuffMarketDashboard() {
             <h2>综合因子趋势预测</h2>
             <span>
               {forecastGoodsLabel ? `${forecastGoodsLabel} · ` : ""}
-              goods_id={forecast.goodsId} · {fmtTime(forecast.fetchedAt)}
+              goods_id={forecast?.goodsId ?? selectedGoodsId}
+              {forecast?.fetchedAt ? ` · ${fmtTime(forecast.fetchedAt)}` : " · 计算中..."}
             </span>
           </div>
 
+          {forecast ? (
+            <>
           <div className="metric-grid">
             <div className="metric">
               <span>方向</span>
@@ -2265,6 +2363,20 @@ export function BuffMarketDashboard() {
               <span>覆盖率</span>
               <strong>{forecast.snapshots.coveragePct.toFixed(2)}%</strong>
             </div>
+            <div className="metric">
+              <span>LLM 状态</span>
+              <strong>
+                <span className={llmStatusClass(forecast.llm.status)}>{llmStatusText(forecast.llm.status)}</span>
+              </strong>
+            </div>
+            <div className="metric">
+              <span>LLM 信号</span>
+              <strong>{fmtSignedPct(forecast.snapshots.llmSignal * 100)}</strong>
+            </div>
+            <div className="metric">
+              <span>LLM 可靠性</span>
+              <strong>{(forecast.snapshots.llmReliability * 100).toFixed(1)}%</strong>
+            </div>
           </div>
 
           <div className="buff-forecast-card">
@@ -2276,6 +2388,71 @@ export function BuffMarketDashboard() {
               ))}
             </ul>
           </div>
+
+          {forecast.llm.narrative ? (
+            <div className="buff-forecast-card buff-forecast-llm-card">
+              <p className="buff-forecast-title">LLM 语义分析摘要</p>
+              <p className="buff-forecast-summary">{forecast.llm.narrative.summary}</p>
+              <div className="buff-forecast-llm-meta">
+                <span>模型：{forecast.llm.model ?? "N/A"}</span>
+                <span>
+                  事件：{forecast.llm.analyzedCount}/{forecast.llm.sourceCount}
+                </span>
+                <span>热度风险：{(forecast.llm.aggregate.hypeRisk * 100).toFixed(1)}%</span>
+                <span>冲突风险：{(forecast.llm.aggregate.conflictRisk * 100).toFixed(1)}%</span>
+              </div>
+              {forecast.llm.narrative.risks.length ? (
+                <ul className="buff-forecast-tactics">
+                  {forecast.llm.narrative.risks.map((risk) => (
+                    <li key={`llm-risk-${risk}`}>{risk}</li>
+                  ))}
+                </ul>
+              ) : null}
+              {forecast.llm.narrative.advice.length ? (
+                <ul className="buff-forecast-tactics">
+                  {forecast.llm.narrative.advice.map((advice) => (
+                    <li key={`llm-advice-${advice}`}>{advice}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+
+          {forecast.llm.eventInsights.length ? (
+            <div className="buff-impact-wrap">
+              <table className="buff-impact-table">
+                <thead>
+                  <tr>
+                    <th>事件时间</th>
+                    <th>来源</th>
+                    <th>类型</th>
+                    <th>方向</th>
+                    <th>相关性</th>
+                    <th>可信度</th>
+                    <th>主题</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {forecast.llm.eventInsights.slice(0, 12).map((event) => (
+                    <tr key={`llm-event-${event.refId}`}>
+                      <td>{fmtTime(event.publishedAt)}</td>
+                      <td>{llmProviderText(event.provider)}</td>
+                      <td>{llmEventTypeText(event.eventType)}</td>
+                      <td>
+                        <span className={llmDirectionClass(event.direction)}>{llmDirectionText(event.direction)}</span>
+                      </td>
+                      <td>{(event.relevance * 100).toFixed(1)}%</td>
+                      <td>{(event.reliability * 100).toFixed(1)}%</td>
+                      <td>
+                        <strong>{event.topic}</strong>
+                        {event.evidence.length ? <p className="buff-impact-summary">{event.evidence.join(" / ")}</p> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
 
           <div className="buff-impact-wrap">
             <table className="buff-impact-table">
@@ -2301,6 +2478,10 @@ export function BuffMarketDashboard() {
               </tbody>
             </table>
           </div>
+            </>
+          ) : (
+            <p className="buff-muted">趋势预测启动中，正在拉取价格与事件因子...</p>
+          )}
         </section>
       ) : null}
 

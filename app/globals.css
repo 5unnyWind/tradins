@@ -2600,11 +2600,47 @@ button.buff-overview-fav-toggle:hover:not(:disabled) {
   color: #fecaca;
 }
 
+.buff-forecast-badge.llm-ok {
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #9ddcff;
+}
+
+.buff-forecast-badge.llm-skipped {
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #c8d5e2;
+}
+
+.buff-forecast-badge.llm-error {
+  border-color: rgba(251, 113, 133, 0.55);
+  color: #fecdd3;
+}
+
 .buff-forecast-card {
   border: 1px solid rgba(77, 111, 140, 0.42);
   border-radius: 12px;
   background: rgba(10, 18, 29, 0.62);
   padding: 12px;
+}
+
+.buff-forecast-llm-card {
+  border-color: rgba(94, 149, 194, 0.5);
+  background: linear-gradient(160deg, rgba(14, 25, 39, 0.78), rgba(11, 22, 34, 0.7));
+}
+
+.buff-forecast-llm-meta {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.buff-forecast-llm-meta span {
+  border: 1px solid rgba(81, 124, 157, 0.42);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 11px;
+  color: #afc9e1;
+  background: rgba(13, 28, 43, 0.52);
 }
 
 .buff-forecast-title {
@@ -2619,6 +2655,7 @@ button.buff-overview-fav-toggle:hover:not(:disabled) {
   color: #bdd2e8;
   font-size: 13px;
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .buff-forecast-tactics {

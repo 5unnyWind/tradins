@@ -5,6 +5,12 @@ import {
   type BuffGame,
   type BuffSeriesPoint,
 } from "@/lib/buff";
+import {
+  analyzeBuffLlmIntel,
+  type BuffLlmEventInsight,
+  type BuffLlmIntelResult,
+  type BuffLlmNarrative,
+} from "@/lib/data/buff-llm-intel";
 import { fetchProImpactForGoods, type ProImpactEvent } from "@/lib/data/pro-events";
 import { fetchValveImpactForGoods, type ValveImpactEvent } from "@/lib/data/valve-updates";
 
@@ -13,7 +19,7 @@ export type BuffForecastRiskLevel = "low" | "medium" | "high";
 export type BuffForecastDecision = "buy" | "hold" | "reduce";
 
 export interface BuffForecastFactor {
-  key: "momentum" | "orderBook" | "valveEvent" | "proEvent" | "attentionHeat";
+  key: "momentum" | "orderBook" | "valveEvent" | "proEvent" | "attentionHeat" | "llmEventIntel";
   label: string;
   score: number;
   weight: number;
@@ -26,6 +32,55 @@ export interface BuffForecastRecommendation {
   title: string;
   summary: string;
   tactics: string[];
+}
+
+export interface BuffForecastLlmIntel {
+  enabled: boolean;
+  status: "ok" | "skipped" | "error";
+  model: string | null;
+  promptVersion: string;
+  sourceCount: number;
+  analyzedCount: number;
+  aggregate: {
+    signal: number;
+    hypeRisk: number;
+    conflictRisk: number;
+    reliability: number;
+    relevance: number;
+    coveragePct: number;
+  };
+  narrative: {
+    summary: string;
+    rationale: string[];
+    risks: string[];
+    advice: string[];
+  } | null;
+  eventInsights: Array<{
+    refId: string;
+    provider: "valve" | "pro";
+    publishedAt: string;
+    topic: string;
+    eventType:
+      | "valve_patch"
+      | "valve_economy"
+      | "pro_preference"
+      | "pro_retirement"
+      | "pro_roster"
+      | "social_hype"
+      | "rumor"
+      | "other";
+    direction: "up" | "down" | "neutral" | "mixed" | "unknown";
+    confidence: number;
+    relevance: number;
+    hypeScore: number;
+    reliability: number;
+    horizonHours: number;
+    duplicateOf: string | null;
+    conflictsWith: string[];
+    evidence: string[];
+    reason: string;
+  }>;
+  warning: string | null;
 }
 
 export interface BuffForecastResult {
@@ -49,6 +104,7 @@ export interface BuffForecastResult {
     h72: number | null;
   };
   recommendation: BuffForecastRecommendation;
+  llm: BuffForecastLlmIntel;
   snapshots: {
     latestPrice: number | null;
     returnH24Pct: number | null;
@@ -60,6 +116,10 @@ export interface BuffForecastResult {
     valveSignal: number;
     proSignal: number;
     attentionHeatSignal: number;
+    llmSignal: number;
+    llmHypeRisk: number;
+    llmConflictRisk: number;
+    llmReliability: number;
     coveragePct: number;
   };
   factors: BuffForecastFactor[];
@@ -72,6 +132,8 @@ export interface FetchBuffForecastInput {
   days?: number;
   currency?: BuffCurrency;
   eventLimit?: number;
+  llmEventLimit?: number;
+  enableLlm?: boolean;
   timeoutMs?: number;
   requestCookie?: string | null;
   requestCsrfToken?: string | null;
@@ -336,15 +398,29 @@ function calcRiskScore(args: {
   valveSignal: number;
   proSignal: number;
   hypeRisk: number;
+  llmConflictRisk: number;
+  llmHypeRisk: number;
 }): number {
   const volRisk = args.volatilityPct === null ? 0.45 : clamp(args.volatilityPct / 7, 0, 1);
   const spreadRisk = args.spreadPct === null ? 0.5 : clamp(args.spreadPct / 4, 0, 1);
   const liquidityRisk =
     args.transactedNum === null ? 0.55 : clamp((80 - args.transactedNum) / 80, 0, 1);
   const conflictRisk = args.valveSignal * args.proSignal < 0 ? clamp(Math.abs(args.valveSignal - args.proSignal), 0, 1) : 0;
+  const llmConflictRisk = clamp(args.llmConflictRisk, 0, 1);
+  const llmHypeRisk = clamp(args.llmHypeRisk, 0, 1);
 
   return round(
-    clamp(volRisk * 0.34 + spreadRisk * 0.26 + liquidityRisk * 0.2 + conflictRisk * 0.1 + args.hypeRisk * 0.1, 0, 1),
+    clamp(
+      volRisk * 0.3 +
+        spreadRisk * 0.22 +
+        liquidityRisk * 0.18 +
+        conflictRisk * 0.1 +
+        args.hypeRisk * 0.08 +
+        llmConflictRisk * 0.07 +
+        llmHypeRisk * 0.05,
+      0,
+      1,
+    ),
     4,
   );
 }
@@ -368,31 +444,40 @@ function buildRecommendation(args: {
   predictedH24: number | null;
   predictedH72: number | null;
   spreadPct: number | null;
+  llmNarrative: BuffLlmNarrative | null;
 }): BuffForecastRecommendation {
   const spreadHint =
     args.spreadPct === null ? "盘口价差未知" : `当前价差约 ${Math.max(0, args.spreadPct).toFixed(2)}%`;
+  const llmSummary = args.llmNarrative?.summary?.trim();
+  const llmAdvice = (args.llmNarrative?.advice ?? []).slice(0, 2);
 
   if (args.trend === "bullish") {
     if (args.riskLevel === "high") {
       return {
         decision: "hold",
         title: "偏多但波动偏高",
-        summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。建议轻仓试探，避免追高。`,
+        summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。建议轻仓试探，避免追高。${
+          llmSummary ? `LLM 观点：${llmSummary}` : ""
+        }`,
         tactics: [
           "仅在回调到近24h均值附近分批买入",
           "单次仓位不超过计划仓位的 30%",
           "若24h内跌破入场价 3%-5% 则止损离场",
+          ...llmAdvice,
         ],
       };
     }
     return {
       decision: "buy",
       title: args.confidence >= 70 ? "短中期偏多" : "轻度偏多",
-      summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。${spreadHint}。`,
+      summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}。${spreadHint}。${
+        llmSummary ? `LLM 观点：${llmSummary}` : ""
+      }`,
       tactics: [
         "优先分批挂单，不追涨",
         "重点观察 Valve / 职业事件是否延续",
         "若72h走势未兑现，降低仓位并复盘因子变化",
+        ...llmAdvice,
       ],
     };
   }
@@ -401,11 +486,14 @@ function buildRecommendation(args: {
     return {
       decision: "reduce",
       title: args.confidence >= 70 ? "短中期偏空" : "轻度偏空",
-      summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。建议回避追高，已有仓位优先减仓。`,
+      summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。建议回避追高，已有仓位优先减仓。${
+        llmSummary ? `LLM 观点：${llmSummary}` : ""
+      }`,
       tactics: [
         "已有浮盈仓位分批止盈，降低回撤",
         "等待价差收敛与事件冲击衰减后再评估",
         "若出现强正向新事件，再考虑反转策略",
+        ...llmAdvice,
       ],
     };
   }
@@ -413,12 +501,69 @@ function buildRecommendation(args: {
   return {
     decision: "hold",
     title: "震荡格局",
-    summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。当前方向性不足，建议以观望为主。`,
+    summary: `预测 24h ${args.predictedH24?.toFixed(2) ?? "N/A"}%，72h ${args.predictedH72?.toFixed(2) ?? "N/A"}%。当前方向性不足，建议以观望为主。${
+      llmSummary ? `LLM 观点：${llmSummary}` : ""
+    }`,
     tactics: [
       "仅做小仓位区间交易",
       "等待突破并确认成交放量后再跟随",
       "持续跟踪补丁与职业事件新催化",
+      ...llmAdvice,
     ],
+  };
+}
+
+function mapLlmNarrative(narrative: BuffLlmNarrative | null): BuffForecastLlmIntel["narrative"] {
+  if (!narrative) return null;
+  return {
+    summary: narrative.summary,
+    rationale: [...narrative.rationale],
+    risks: [...narrative.risks],
+    advice: [...narrative.advice],
+  };
+}
+
+function mapLlmEventInsights(
+  eventInsights: BuffLlmEventInsight[],
+): BuffForecastLlmIntel["eventInsights"] {
+  return eventInsights.map((event) => ({
+    refId: event.refId,
+    provider: event.provider,
+    publishedAt: event.publishedAt,
+    topic: event.topic,
+    eventType: event.eventType,
+    direction: event.direction,
+    confidence: event.confidence,
+    relevance: event.relevance,
+    hypeScore: event.hypeScore,
+    reliability: event.reliability,
+    horizonHours: event.horizonHours,
+    duplicateOf: event.duplicateOf,
+    conflictsWith: [...event.conflictsWith],
+    evidence: [...event.evidence],
+    reason: event.reason,
+  }));
+}
+
+function mapLlmResult(llm: BuffLlmIntelResult): BuffForecastLlmIntel {
+  return {
+    enabled: llm.enabled,
+    status: llm.status,
+    model: llm.model,
+    promptVersion: llm.promptVersion,
+    sourceCount: llm.sourceCount,
+    analyzedCount: llm.analyzedCount,
+    aggregate: {
+      signal: llm.aggregate.signal,
+      hypeRisk: llm.aggregate.hypeRisk,
+      conflictRisk: llm.aggregate.conflictRisk,
+      reliability: llm.aggregate.reliability,
+      relevance: llm.aggregate.relevance,
+      coveragePct: llm.aggregate.coveragePct,
+    },
+    narrative: mapLlmNarrative(llm.narrative),
+    eventInsights: mapLlmEventInsights(llm.eventInsights),
+    warning: llm.warning,
   };
 }
 
@@ -432,6 +577,7 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
   const days = clamp(Math.floor(input.days ?? 30), 1, 120);
   const currency = input.currency ?? "CNY";
   const eventLimit = clamp(Math.floor(input.eventLimit ?? 16), 4, 40);
+  const llmEventLimit = clamp(Math.floor(input.llmEventLimit ?? eventLimit), 4, 32);
 
   const [dashboard, valveImpact, proImpact] = await Promise.all([
     fetchBuffGoodsDashboard({
@@ -466,6 +612,22 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
     }),
   ]);
 
+  const goodsName =
+    dashboard.goodsInfo?.name ??
+    dashboard.goodsInfo?.shortName ??
+    dashboard.goodsInfo?.marketHashName ??
+    proImpact.goodsName ??
+    null;
+
+  const llmIntel = await analyzeBuffLlmIntel({
+    goodsId,
+    goodsName,
+    valveEvents: valveImpact.events,
+    proEvents: proImpact.events,
+    maxEvents: llmEventLimit,
+    enabled: input.enableLlm,
+  });
+
   const points = [...(dashboard.priceHistory?.primarySeries?.points ?? [])].sort(
     (left, right) => left.timestampMs - right.timestampMs,
   );
@@ -484,14 +646,17 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
     valveSignal: valveScore.signal,
     proSignal: proScore.signal,
     hypeRisk: heat.hypeRisk,
+    llmConflictRisk: llmIntel.aggregate.conflictRisk,
+    llmHypeRisk: llmIntel.aggregate.hypeRisk,
   });
 
   const weights = {
-    momentum: 0.36,
-    orderBook: 0.22,
-    valveEvent: 0.18,
-    proEvent: 0.16,
-    attentionHeat: 0.08,
+    momentum: 0.31,
+    orderBook: 0.2,
+    valveEvent: 0.15,
+    proEvent: 0.14,
+    attentionHeat: 0.06,
+    llmEventIntel: 0.14,
   } as const;
 
   const rawSignal =
@@ -499,21 +664,30 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
     orderBook.score * weights.orderBook +
     valveScore.signal * weights.valveEvent +
     proScore.signal * weights.proEvent +
-    heat.score * weights.attentionHeat;
+    heat.score * weights.attentionHeat +
+    llmIntel.aggregate.signal * weights.llmEventIntel;
 
   const finalSignal = round(clamp(rawSignal * (1 - riskScore * 0.3), -1, 1), 4);
   const trend = trendFromSignal(finalSignal);
   const riskLevel = riskLevelFromScore(riskScore);
 
+  const coverageDenominator = llmIntel.enabled ? 5 : 4;
   const availableSignals = [
     points.length >= 8,
     orderBook.spreadPct !== null || orderBook.depthRatio !== null,
     valveImpact.events.length > 0,
     proImpact.events.length > 0,
+    llmIntel.enabled ? llmIntel.analyzedCount > 0 : false,
   ].filter(Boolean).length;
-  const coveragePct = round((availableSignals / 4) * 100, 2);
+  const coveragePct = round((availableSignals / coverageDenominator) * 100, 2);
 
-  const confidenceBase = 35 + Math.abs(finalSignal) * 45 + (coveragePct / 100) * 20 - riskScore * 12;
+  const confidenceBase =
+    34 +
+    Math.abs(finalSignal) * 44 +
+    (coveragePct / 100) * 20 +
+    llmIntel.aggregate.reliability * 7 -
+    riskScore * 12 -
+    llmIntel.aggregate.conflictRisk * 4;
   const confidence = Math.round(clamp(confidenceBase, points.length ? 10 : 5, 95));
 
   const volatilityAmp = clamp((momentum.volatilityPct ?? 2.5) / 2, 0.6, 3.5);
@@ -531,6 +705,7 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
     predictedH24,
     predictedH72,
     spreadPct: orderBook.spreadPct,
+    llmNarrative: llmIntel.narrative,
   });
 
   const factors: BuffForecastFactor[] = [
@@ -578,19 +753,21 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
       contribution: round(heat.score * weights.attentionHeat, 4),
       detail: `事件热度=${heat.rawHeat.toFixed(2)}，hypeRisk=${heat.hypeRisk.toFixed(2)}`,
     },
+    {
+      key: "llmEventIntel",
+      label: "LLM 语义事件层",
+      score: llmIntel.aggregate.signal,
+      weight: weights.llmEventIntel,
+      contribution: round(llmIntel.aggregate.signal * weights.llmEventIntel, 4),
+      detail: `status=${llmIntel.status} / events=${llmIntel.analyzedCount}/${llmIntel.sourceCount} / reliability=${llmIntel.aggregate.reliability.toFixed(2)} / hype=${llmIntel.aggregate.hypeRisk.toFixed(2)}`,
+    },
   ];
-
-  const goodsName =
-    dashboard.goodsInfo?.name ??
-    dashboard.goodsInfo?.shortName ??
-    dashboard.goodsInfo?.marketHashName ??
-    proImpact.goodsName ??
-    null;
 
   const warnings = dedupeWarnings([
     ...dashboard.warnings,
     ...valveImpact.warnings,
     ...proImpact.warnings,
+    ...(llmIntel.warning ? [llmIntel.warning] : []),
     ...(points.length < 8 ? ["价格序列点位偏少，预测稳定性受限。"] : []),
     ...(coveragePct < 50 ? ["可用因子覆盖不足 50%，建议补充有效 Cookie 后再评估。"] : []),
   ]);
@@ -613,6 +790,7 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
       h72: predictedH72,
     },
     recommendation,
+    llm: mapLlmResult(llmIntel),
     snapshots: {
       latestPrice,
       returnH24Pct: momentum.returnH24Pct,
@@ -624,6 +802,10 @@ export async function fetchBuffForecast(input: FetchBuffForecastInput): Promise<
       valveSignal: valveScore.signal,
       proSignal: proScore.signal,
       attentionHeatSignal: heat.score,
+      llmSignal: llmIntel.aggregate.signal,
+      llmHypeRisk: llmIntel.aggregate.hypeRisk,
+      llmConflictRisk: llmIntel.aggregate.conflictRisk,
+      llmReliability: llmIntel.aggregate.reliability,
       coveragePct,
     },
     factors,

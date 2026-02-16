@@ -65,6 +65,9 @@ INTEL_PIPELINE_PROVIDERS=valve,pro
 INTEL_VALVE_INTERVAL_MINUTES=180
 INTEL_PRO_INTERVAL_MINUTES=180
 
+# BUFF 预测 LLM 语义层（可选）
+BUFF_FORECAST_ENABLE_LLM=true
+
 # Vercel Postgres（可选）
 # POSTGRES_URL=...
 # POSTGRES_PRISMA_URL=...
@@ -104,6 +107,7 @@ npm run dev
   - `POST /api/buff/goods/:goodsId`：商品详情聚合（`goods/info`、`goods_tab_list`、`sell_order`、`buy_order`、`bill_order`、`price_history/*`）
   - `GET|POST /api/buff/price-history`：单独拉取价格走势（兼容接口）
   - `GET|POST /api/buff/forecast`：融合价格动量、订单簿、Valve/职业事件冲击，输出趋势预测与操作建议
+    - 内置 LLM 语义层（事件结构化、商品关联、炒作/冲突识别、解释性建议），失败时自动降级为规则模型
   - `GET|POST /api/valve/updates`：拉取 V 社官方变更事件流（`ISteamNews` + Steam RSS 增强）
   - `GET|POST /api/valve/impact`：按 `goods_id` 联动 BUFF 价格主序列，输出事件后 `1h/24h/72h` 影响回放
   - `GET|POST /api/pro/events`：拉取职业事件流（HLTV RSS）并用 Liquipedia 标注选手活跃/退役状态

@@ -35,12 +35,27 @@ const OptionalTokenSchema = z.preprocess(
   z.string().max(512).optional(),
 );
 
+const OptionalBooleanSchema = z.preprocess(
+  (value) => {
+    if (typeof value === "boolean") return value;
+    if (typeof value !== "string") return undefined;
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return undefined;
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+    return value;
+  },
+  z.boolean().optional(),
+);
+
 const InputSchema = z.object({
   goodsId: z.coerce.number().int().min(1).max(1_000_000_000),
   game: z.literal("csgo").optional().default("csgo"),
   days: z.coerce.number().int().min(1).max(120).optional().default(30),
   currency: z.enum(["CNY", "USD"]).optional().default("CNY"),
   eventLimit: z.coerce.number().int().min(4).max(40).optional().default(16),
+  llmEventLimit: z.coerce.number().int().min(4).max(32).optional(),
+  enableLlm: OptionalBooleanSchema,
   timeoutMs: z.coerce.number().int().min(500).max(20_000).optional(),
   cookie: OptionalCookieSchema,
   csrfToken: OptionalTokenSchema,
@@ -54,6 +69,8 @@ function parseGetInput(request: Request): z.infer<typeof InputSchema> {
     days: url.searchParams.get("days") ?? undefined,
     currency: url.searchParams.get("currency") ?? undefined,
     eventLimit: url.searchParams.get("eventLimit") ?? url.searchParams.get("event_limit") ?? undefined,
+    llmEventLimit: url.searchParams.get("llmEventLimit") ?? url.searchParams.get("llm_event_limit") ?? undefined,
+    enableLlm: url.searchParams.get("enableLlm") ?? url.searchParams.get("enable_llm") ?? undefined,
     timeoutMs: url.searchParams.get("timeoutMs") ?? url.searchParams.get("timeout_ms") ?? undefined,
   });
 }
@@ -65,6 +82,8 @@ async function run(input: z.infer<typeof InputSchema>) {
     days: input.days,
     currency: input.currency,
     eventLimit: input.eventLimit,
+    llmEventLimit: input.llmEventLimit,
+    enableLlm: input.enableLlm,
     timeoutMs: input.timeoutMs,
     requestCookie: input.cookie,
     requestCsrfToken: input.csrfToken,
