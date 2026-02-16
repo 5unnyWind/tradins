@@ -2018,6 +2018,87 @@ button.buff-market-item:hover:not(:disabled) {
   color: #aebacd;
 }
 
+.buff-forecast-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.buff-forecast-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(88, 118, 151, 0.55);
+  background: rgba(14, 26, 41, 0.82);
+  color: #c7d9ed;
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.buff-forecast-badge.is-bullish {
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #7be8d5;
+}
+
+.buff-forecast-badge.is-bearish {
+  border-color: rgba(244, 63, 94, 0.5);
+  color: #f8b4bf;
+}
+
+.buff-forecast-badge.is-sideways {
+  border-color: rgba(56, 189, 248, 0.52);
+  color: #9ad8ff;
+}
+
+.buff-forecast-badge.risk-low {
+  border-color: rgba(45, 212, 191, 0.5);
+  color: #7be8d5;
+}
+
+.buff-forecast-badge.risk-medium {
+  border-color: rgba(251, 191, 36, 0.55);
+  color: #fde68a;
+}
+
+.buff-forecast-badge.risk-high {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fecaca;
+}
+
+.buff-forecast-card {
+  border: 1px solid rgba(77, 111, 140, 0.42);
+  border-radius: 12px;
+  background: rgba(10, 18, 29, 0.62);
+  padding: 12px;
+}
+
+.buff-forecast-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #d9eaff;
+}
+
+.buff-forecast-summary {
+  margin: 8px 0 0;
+  color: #bdd2e8;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.buff-forecast-tactics {
+  margin: 10px 0 0;
+  padding-left: 16px;
+  display: grid;
+  gap: 6px;
+}
+
+.buff-forecast-tactics li {
+  color: #9cb8d3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .buff-intel-run-list {
   display: grid;
   gap: 6px;

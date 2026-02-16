@@ -205,6 +205,70 @@ type BuffGoodsApiResponse = {
   error?: string;
 };
 
+type BuffForecastTrend = "bullish" | "bearish" | "sideways";
+type BuffForecastRiskLevel = "low" | "medium" | "high";
+type BuffForecastDecision = "buy" | "hold" | "reduce";
+
+type BuffForecastFactor = {
+  key: "momentum" | "orderBook" | "valveEvent" | "proEvent" | "attentionHeat";
+  label: string;
+  score: number;
+  weight: number;
+  contribution: number;
+  detail: string;
+};
+
+type BuffForecastRecommendation = {
+  decision: BuffForecastDecision;
+  title: string;
+  summary: string;
+  tactics: string[];
+};
+
+type BuffForecastResult = {
+  game: "csgo";
+  goodsId: number;
+  goodsName: string | null;
+  iconUrl: string | null;
+  days: number;
+  currency: "CNY" | "USD";
+  fetchedAt: string;
+  auth: {
+    cookieSource: BuffAuthSource;
+    csrfSource: BuffAuthSource;
+  };
+  trend: BuffForecastTrend;
+  confidence: number;
+  riskLevel: BuffForecastRiskLevel;
+  riskScore: number;
+  predictedReturnPct: {
+    h24: number | null;
+    h72: number | null;
+  };
+  recommendation: BuffForecastRecommendation;
+  snapshots: {
+    latestPrice: number | null;
+    returnH24Pct: number | null;
+    returnH72Pct: number | null;
+    volatilityPct: number | null;
+    spreadPct: number | null;
+    depthRatio: number | null;
+    transactedNum: number | null;
+    valveSignal: number;
+    proSignal: number;
+    attentionHeatSignal: number;
+    coveragePct: number;
+  };
+  factors: BuffForecastFactor[];
+  warnings: string[];
+};
+
+type BuffForecastApiResponse = {
+  ok?: boolean;
+  result?: BuffForecastResult;
+  error?: string;
+};
+
 type ValveUpdateCategory = "economy" | "maps" | "gameplay" | "competitive" | "anti-cheat" | "misc";
 type ValveUpdateSeverity = "high" | "medium" | "low";
 type ValveImpactDirection = "up" | "down" | "flat" | "insufficient";
@@ -718,6 +782,32 @@ function proDirectionClass(direction: ProImpactDirection): string {
   return `buff-impact-direction is-${direction}`;
 }
 
+function forecastTrendText(trend: BuffForecastTrend): string {
+  if (trend === "bullish") return "看涨";
+  if (trend === "bearish") return "看跌";
+  return "震荡";
+}
+
+function forecastTrendClass(trend: BuffForecastTrend): string {
+  return `buff-forecast-badge is-${trend}`;
+}
+
+function forecastRiskText(risk: BuffForecastRiskLevel): string {
+  if (risk === "low") return "低风险";
+  if (risk === "high") return "高风险";
+  return "中风险";
+}
+
+function forecastRiskClass(risk: BuffForecastRiskLevel): string {
+  return `buff-forecast-badge risk-${risk}`;
+}
+
+function forecastDecisionText(decision: BuffForecastDecision): string {
+  if (decision === "buy") return "建议分批买入";
+  if (decision === "reduce") return "建议减仓/回避";
+  return "建议观望";
+}
+
 function intelProviderText(provider: IntelProvider): string {
   return provider === "valve" ? "Valve 官方" : "职业事件";
 }
@@ -764,6 +854,7 @@ export function BuffMarketDashboard() {
 
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [forecastLoading, setForecastLoading] = useState(false);
   const [valveLoading, setValveLoading] = useState(false);
   const [valveImpactLoading, setValveImpactLoading] = useState(false);
   const [proLoading, setProLoading] = useState(false);
@@ -772,6 +863,7 @@ export function BuffMarketDashboard() {
   const [intelAlertsLoading, setIntelAlertsLoading] = useState(false);
   const [listStatus, setListStatus] = useState("");
   const [detailStatus, setDetailStatus] = useState("");
+  const [forecastStatus, setForecastStatus] = useState("");
   const [valveStatus, setValveStatus] = useState("");
   const [valveImpactStatus, setValveImpactStatus] = useState("");
   const [proStatus, setProStatus] = useState("");
@@ -782,6 +874,7 @@ export function BuffMarketDashboard() {
   const [selectedGoodsId, setSelectedGoodsId] = useState<number | null>(null);
   const [marketResult, setMarketResult] = useState<BuffMarketListResult | null>(null);
   const [dashboard, setDashboard] = useState<BuffGoodsDashboardResult | null>(null);
+  const [forecast, setForecast] = useState<BuffForecastResult | null>(null);
   const [valveUpdates, setValveUpdates] = useState<ValveUpdatesResult | null>(null);
   const [valveImpact, setValveImpact] = useState<ValveImpactResult | null>(null);
   const [proEvents, setProEvents] = useState<ProPlayerEventsResult | null>(null);
@@ -818,13 +911,14 @@ export function BuffMarketDashboard() {
     const merged = new Set<string>();
     for (const warning of dashboard?.warnings ?? []) merged.add(warning);
     for (const warning of dashboard?.priceHistory?.warnings ?? []) merged.add(warning);
+    for (const warning of forecast?.warnings ?? []) merged.add(warning);
     for (const warning of marketResult?.warnings ?? []) merged.add(warning);
     for (const warning of valveUpdates?.warnings ?? []) merged.add(warning);
     for (const warning of valveImpact?.warnings ?? []) merged.add(warning);
     for (const warning of proEvents?.warnings ?? []) merged.add(warning);
     for (const warning of proImpact?.warnings ?? []) merged.add(warning);
     return [...merged];
-  }, [dashboard, marketResult, proEvents, proImpact, valveImpact, valveUpdates]);
+  }, [dashboard, forecast, marketResult, proEvents, proImpact, valveImpact, valveUpdates]);
 
   const buildAuthPayload = useCallback(() => {
     const normalizedCookie = cookie.trim();
@@ -834,6 +928,52 @@ export function BuffMarketDashboard() {
       csrfToken: normalizedCsrf || undefined,
     };
   }, [cookie, csrfToken]);
+
+  const loadForecast = useCallback(
+    async (goodsId: number) => {
+      setForecastLoading(true);
+      setForecastStatus("");
+      try {
+        const dayValue = Number(days);
+        if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 120) {
+          throw new Error("days 需为 1-120 的整数");
+        }
+
+        const response = await fetch("/api/buff/forecast", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            goodsId,
+            game: "csgo",
+            days: dayValue,
+            currency: "CNY",
+            eventLimit: 16,
+            ...buildAuthPayload(),
+          }),
+        });
+
+        const data = (await response.json()) as BuffForecastApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setForecast(data.result);
+        setForecastStatus(
+          `趋势预测刷新成功：${fmtTime(data.result.fetchedAt)}（${forecastTrendText(data.result.trend)} / 置信度 ${data.result.confidence}%）`,
+        );
+      } catch (error) {
+        setForecast(null);
+        setForecastStatus(`趋势预测刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setForecastLoading(false);
+      }
+    },
+    [buildAuthPayload, days],
+  );
 
   const loadValveUpdates = useCallback(async () => {
     setValveLoading(true);
@@ -1088,12 +1228,14 @@ export function BuffMarketDashboard() {
 
         setDashboard(data.result);
         setDetailStatus(`详情刷新成功：${fmtTime(data.result.fetchedAt)}`);
+        void loadForecast(goodsId);
         void loadValveImpact(goodsId);
         void loadProImpact(goodsId);
         void loadIntelEvaluation(goodsId);
         void loadIntelAlerts(goodsId);
       } catch (error) {
         setDashboard(null);
+        setForecast(null);
         setValveImpact(null);
         setProImpact(null);
         setDetailStatus(`详情刷新失败: ${error instanceof Error ? error.message : String(error)}`);
@@ -1101,7 +1243,7 @@ export function BuffMarketDashboard() {
         setDetailLoading(false);
       }
     },
-    [buildAuthPayload, days, loadIntelAlerts, loadIntelEvaluation, loadProImpact, loadValveImpact],
+    [buildAuthPayload, days, loadForecast, loadIntelAlerts, loadIntelEvaluation, loadProImpact, loadValveImpact],
   );
 
   const loadMarketList = useCallback(
@@ -1164,6 +1306,7 @@ export function BuffMarketDashboard() {
           await loadGoodsDashboard(nextGoodsId);
         } else {
           setDashboard(null);
+          setForecast(null);
           setValveImpact(null);
           setProImpact(null);
           setDetailStatus("当前筛选条件下没有商品数据。");
@@ -1400,6 +1543,17 @@ export function BuffMarketDashboard() {
           <button type="button" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
             按 goods_id 拉取详情
           </button>
+          <button
+            type="button"
+            disabled={forecastLoading || selectedGoodsId === null}
+            onClick={() => {
+              if (selectedGoodsId !== null) {
+                void loadForecast(selectedGoodsId);
+              }
+            }}
+          >
+            {forecastLoading ? "预测加载中..." : "刷新趋势预测"}
+          </button>
           <button type="button" disabled={intelEvaluationLoading} onClick={() => void loadIntelEvaluation(selectedGoodsId)}>
             {intelEvaluationLoading ? "评估加载中..." : "刷新因子评估"}
           </button>
@@ -1410,6 +1564,7 @@ export function BuffMarketDashboard() {
 
         {listStatus ? <p className="status">{listStatus}</p> : null}
         {detailStatus ? <p className="status">{detailStatus}</p> : null}
+        {forecastStatus ? <p className="status">{forecastStatus}</p> : null}
         {valveStatus ? <p className="status">{valveStatus}</p> : null}
         {valveImpactStatus ? <p className="status">{valveImpactStatus}</p> : null}
         {proStatus ? <p className="status">{proStatus}</p> : null}
@@ -1557,6 +1712,91 @@ export function BuffMarketDashboard() {
           </div>
         </article>
       </section>
+
+      {forecast ? (
+        <section className="panel buff-forecast-panel">
+          <div className="panel-header">
+            <h2>综合因子趋势预测</h2>
+            <span>
+              goods_id={forecast.goodsId} · {fmtTime(forecast.fetchedAt)}
+            </span>
+          </div>
+
+          <div className="metric-grid">
+            <div className="metric">
+              <span>方向</span>
+              <strong>
+                <span className={forecastTrendClass(forecast.trend)}>{forecastTrendText(forecast.trend)}</span>
+              </strong>
+            </div>
+            <div className="metric">
+              <span>置信度</span>
+              <strong>{forecast.confidence}%</strong>
+            </div>
+            <div className="metric">
+              <span>风险等级</span>
+              <strong>
+                <span className={forecastRiskClass(forecast.riskLevel)}>{forecastRiskText(forecast.riskLevel)}</span>
+              </strong>
+            </div>
+            <div className="metric">
+              <span>建议动作</span>
+              <strong>{forecastDecisionText(forecast.recommendation.decision)}</strong>
+            </div>
+            <div className="metric">
+              <span>预测 24h</span>
+              <strong>{fmtSignedPct(forecast.predictedReturnPct.h24)}</strong>
+            </div>
+            <div className="metric">
+              <span>预测 72h</span>
+              <strong>{fmtSignedPct(forecast.predictedReturnPct.h72)}</strong>
+            </div>
+            <div className="metric">
+              <span>最新价</span>
+              <strong>{fmtPrice(forecast.snapshots.latestPrice)}</strong>
+            </div>
+            <div className="metric">
+              <span>覆盖率</span>
+              <strong>{forecast.snapshots.coveragePct.toFixed(2)}%</strong>
+            </div>
+          </div>
+
+          <div className="buff-forecast-card">
+            <p className="buff-forecast-title">{forecast.recommendation.title}</p>
+            <p className="buff-forecast-summary">{forecast.recommendation.summary}</p>
+            <ul className="buff-forecast-tactics">
+              {forecast.recommendation.tactics.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div className="buff-impact-wrap">
+            <table className="buff-impact-table">
+              <thead>
+                <tr>
+                  <th>因子</th>
+                  <th>分值</th>
+                  <th>权重</th>
+                  <th>贡献</th>
+                  <th>明细</th>
+                </tr>
+              </thead>
+              <tbody>
+                {forecast.factors.map((factor) => (
+                  <tr key={factor.key}>
+                    <td>{factor.label}</td>
+                    <td>{factor.score.toFixed(3)}</td>
+                    <td>{factor.weight.toFixed(2)}</td>
+                    <td>{factor.contribution.toFixed(3)}</td>
+                    <td>{factor.detail}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
 
       {dashboard ? (
         <>
