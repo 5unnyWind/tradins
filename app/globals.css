@@ -1440,6 +1440,186 @@ button.record-item:hover:not(:disabled) {
 .buff-shell {
   width: min(1240px, calc(100vw - 24px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   padding-bottom: calc(96px + env(safe-area-inset-bottom));
+  position: relative;
+  isolation: isolate;
+  --buff-panel-bg: linear-gradient(168deg, rgba(14, 23, 35, 0.9) 0%, rgba(10, 17, 28, 0.94) 58%, rgba(9, 14, 24, 0.97) 100%);
+  --buff-panel-line: rgba(146, 185, 220, 0.24);
+  --buff-panel-line-hover: rgba(156, 206, 246, 0.38);
+  --buff-panel-ink-soft: #9fb4c9;
+}
+
+.buff-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.buff-ambient-base {
+  position: absolute;
+  inset: -14%;
+  background:
+    radial-gradient(circle at 10% 18%, rgba(53, 196, 242, 0.22) 0%, transparent 42%),
+    radial-gradient(circle at 88% 14%, rgba(69, 214, 194, 0.2) 0%, transparent 44%),
+    radial-gradient(circle at 52% 86%, rgba(97, 123, 255, 0.18) 0%, transparent 48%),
+    linear-gradient(168deg, #060a12 0%, #090f19 54%, #0a1626 100%);
+}
+
+.buff-ambient-glow {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(68px);
+  opacity: 0.34;
+  mix-blend-mode: soft-light;
+  will-change: transform;
+}
+
+.buff-ambient-glow.glow-a {
+  width: min(56vw, 760px);
+  aspect-ratio: 1 / 1;
+  left: -12vw;
+  top: 8vh;
+  background: radial-gradient(circle, rgba(84, 214, 255, 0.62) 0%, rgba(84, 214, 255, 0) 70%);
+  animation: buff-ambient-drift-a 15s ease-in-out infinite;
+}
+
+.buff-ambient-glow.glow-b {
+  width: min(50vw, 680px);
+  aspect-ratio: 1 / 1;
+  right: -10vw;
+  top: 30vh;
+  background: radial-gradient(circle, rgba(62, 229, 205, 0.6) 0%, rgba(62, 229, 205, 0) 70%);
+  animation: buff-ambient-drift-b 13s ease-in-out infinite;
+}
+
+.buff-ambient-glow.glow-c {
+  width: min(44vw, 620px);
+  aspect-ratio: 1 / 1;
+  left: 30vw;
+  bottom: -18vh;
+  background: radial-gradient(circle, rgba(111, 136, 255, 0.52) 0%, rgba(111, 136, 255, 0) 72%);
+  animation: buff-ambient-drift-c 16s ease-in-out infinite;
+}
+
+.buff-ambient-noise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  mix-blend-mode: soft-light;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.36) 0.55px, transparent 0.75px),
+    radial-gradient(rgba(255, 255, 255, 0.22) 0.55px, transparent 0.75px);
+  background-size: 3px 3px, 5px 5px;
+  background-position: 0 0, 1px 2px;
+}
+
+@keyframes buff-ambient-drift-a {
+  0%,
+  100% {
+    transform: translate3d(-6%, -2%, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(8%, 5%, 0) scale(1.08);
+  }
+}
+
+@keyframes buff-ambient-drift-b {
+  0%,
+  100% {
+    transform: translate3d(7%, -3%, 0) scale(1);
+  }
+
+  50% {
+    transform: translate3d(-8%, 4%, 0) scale(1.1);
+  }
+}
+
+@keyframes buff-ambient-drift-c {
+  0%,
+  100% {
+    transform: translate3d(2%, 5%, 0) scale(0.98);
+  }
+
+  50% {
+    transform: translate3d(-4%, -8%, 0) scale(1.06);
+  }
+}
+
+.buff-shell .panel {
+  position: relative;
+  background: var(--buff-panel-bg);
+  border-color: var(--buff-panel-line);
+  box-shadow:
+    0 14px 34px rgba(1, 6, 15, 0.36),
+    inset 0 0 0 1px rgba(204, 230, 255, 0.04);
+  backdrop-filter: blur(5px) saturate(1.06);
+  transition: border-color 220ms ease, box-shadow 220ms ease;
+}
+
+.buff-shell .panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(160deg, rgba(158, 204, 255, 0.08), rgba(158, 204, 255, 0) 30%);
+  opacity: 0.46;
+}
+
+.buff-shell .panel:hover {
+  border-color: var(--buff-panel-line-hover);
+  box-shadow:
+    0 16px 38px rgba(1, 6, 15, 0.38),
+    inset 0 0 0 1px rgba(197, 228, 255, 0.09);
+}
+
+.buff-shell .panel > * {
+  position: relative;
+  z-index: 1;
+}
+
+.buff-shell .buff-muted,
+.buff-shell .panel-header span {
+  color: var(--buff-panel-ink-soft);
+}
+
+.buff-shell .quick-nav-rail {
+  border-color: rgba(112, 152, 187, 0.34);
+  background: rgba(8, 15, 24, 0.84);
+  backdrop-filter: blur(12px);
+}
+
+.buff-shell .quick-nav-pill {
+  border-color: rgba(92, 140, 180, 0.56);
+  background: rgba(18, 31, 46, 0.92);
+}
+
+.buff-shell .quick-nav-pill-top {
+  border-color: rgba(121, 173, 214, 0.62);
+}
+
+.buff-shell .buff-secondary-action {
+  background: rgba(15, 27, 39, 0.88);
+}
+
+.buff-shell .buff-panel-refresh {
+  border: 1px solid rgba(99, 146, 182, 0.58);
+  background: rgba(15, 27, 39, 0.76);
+}
+
+.buff-shell .buff-panel-refresh:hover:not(:disabled) {
+  transform: none;
+  filter: none;
+  border-color: rgba(129, 185, 226, 0.78);
+  background: rgba(24, 41, 58, 0.84);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .buff-ambient-glow {
+    animation: none;
+  }
 }
 
 .buff-head {
@@ -1453,6 +1633,7 @@ button.record-item:hover:not(:disabled) {
   margin: 8px 0 10px;
   font-size: clamp(30px, 3.8vw, 42px);
   line-height: 1.05;
+  text-shadow: 0 0 18px rgba(103, 174, 237, 0.18);
 }
 
 .buff-head-actions {
@@ -1463,7 +1644,7 @@ button.record-item:hover:not(:disabled) {
 
 .buff-muted {
   margin: 0;
-  color: var(--ink-soft);
+  color: var(--buff-panel-ink-soft);
   line-height: 1.65;
 }
 
@@ -2512,6 +2693,11 @@ button.buff-market-item:hover:not(:disabled) {
 }
 
 @media (max-width: 1080px) {
+  .buff-ambient-glow {
+    filter: blur(58px);
+    opacity: 0.3;
+  }
+
   .backtest-head {
     flex-direction: column;
   }
@@ -2602,6 +2788,33 @@ button.buff-market-item:hover:not(:disabled) {
 }
 
 @media (max-width: 768px) {
+  .buff-ambient-glow {
+    filter: blur(52px);
+    opacity: 0.26;
+  }
+
+  .buff-ambient-glow.glow-a {
+    width: min(78vw, 520px);
+    left: -26vw;
+    top: 6vh;
+  }
+
+  .buff-ambient-glow.glow-b {
+    width: min(72vw, 500px);
+    right: -24vw;
+    top: 34vh;
+  }
+
+  .buff-ambient-glow.glow-c {
+    width: min(68vw, 460px);
+    left: 18vw;
+    bottom: -20vh;
+  }
+
+  .buff-ambient-noise {
+    opacity: 0.045;
+  }
+
   .backtest-shell {
     width: min(100%, calc(100vw - 16px - env(safe-area-inset-left) - env(safe-area-inset-right)));
     gap: 10px;

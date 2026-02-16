@@ -1502,6 +1502,14 @@ export function BuffMarketDashboard() {
 
   return (
     <main className="shell buff-shell">
+      <div className="buff-ambient" aria-hidden="true">
+        <span className="buff-ambient-base" />
+        <span className="buff-ambient-glow glow-a" />
+        <span className="buff-ambient-glow glow-b" />
+        <span className="buff-ambient-glow glow-c" />
+        <span className="buff-ambient-noise" />
+      </div>
+
       <section className="panel buff-head">
         <div>
           <p className="eyebrow">cs2 buff market explorer</p>
