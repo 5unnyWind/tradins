@@ -94,7 +94,12 @@ npm run dev
   - `POST /api/buff/market`：首页列表族（`goods` / `goods/buying` / `goods/bundle` / `goods/all`）
   - `POST /api/buff/goods/:goodsId`：商品详情聚合（`goods/info`、`goods_tab_list`、`sell_order`、`buy_order`、`bill_order`、`price_history/*`）
   - `GET|POST /api/buff/price-history`：单独拉取价格走势（兼容接口）
+  - `GET|POST /api/valve/updates`：拉取 V 社官方变更事件流（`ISteamNews` + Steam RSS 增强）
+  - `GET|POST /api/valve/impact`：按 `goods_id` 联动 BUFF 价格主序列，输出事件后 `1h/24h/72h` 影响回放
+  - `GET|POST /api/pro/events`：拉取职业事件流（HLTV RSS）并用 Liquipedia 标注选手活跃/退役状态
+  - `GET|POST /api/pro/impact`：按 `goods_id` 计算职业事件关联分及 `1h/24h/72h` 影响回放
 - 支持读取 `.env.local` 的 `BUFF_COOKIE`、`BUFF_CSRF_TOKEN`、`BUFF_USER_AGENT`
+- 职业事件源可选配置：`LIQUIPEDIA_USER_AGENT`（用于 Liquipedia API 合规访问标识）
 - 页面用途：展示列表筛选、单品挂单/成交/走势、端点状态与数据源因子映射
 
 ## 你会在页面看到什么

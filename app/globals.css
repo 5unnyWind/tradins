@@ -1472,6 +1472,15 @@ button.record-item:hover:not(:disabled) {
   text-align: left;
 }
 
+.buff-market-item-thumb {
+  width: 64px;
+  height: 48px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid rgba(78, 109, 136, 0.35);
+  background: rgba(6, 11, 18, 0.88);
+}
+
 button.buff-market-item:hover:not(:disabled) {
   transform: none;
   filter: none;
@@ -1577,6 +1586,25 @@ button.buff-market-item:hover:not(:disabled) {
   font-size: 11px;
   line-height: 1.45;
   word-break: break-word;
+}
+
+.buff-overview-visual {
+  margin-bottom: 10px;
+  width: 100%;
+  min-height: 140px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(9, 16, 25, 0.84);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+}
+
+.buff-overview-image {
+  max-width: 100%;
+  max-height: 180px;
+  object-fit: contain;
 }
 
 .buff-line-item {
@@ -1703,6 +1731,291 @@ button.buff-market-item:hover:not(:disabled) {
 
 .buff-order-table td {
   color: #b9c9da;
+}
+
+.buff-order-thumb {
+  width: 44px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid rgba(78, 109, 136, 0.34);
+  background: rgba(6, 11, 18, 0.84);
+}
+
+.buff-order-thumb-empty {
+  color: #8198ae;
+}
+
+.buff-valve-grid {
+  align-items: start;
+}
+
+.buff-valve-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.buff-valve-source-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #3d5f7f;
+  background: rgba(17, 31, 46, 0.9);
+  color: #b7d5ef;
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.buff-valve-source-chip.is-ok {
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #71e4d0;
+}
+
+.buff-valve-source-chip.is-fail {
+  border-color: rgba(244, 63, 94, 0.48);
+  color: #f2b2bb;
+}
+
+.buff-valve-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.buff-valve-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.buff-valve-item.is-high {
+  border-color: rgba(244, 63, 94, 0.45);
+  background: rgba(43, 20, 30, 0.58);
+}
+
+.buff-valve-item.is-medium {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(42, 33, 14, 0.52);
+}
+
+.buff-valve-item.is-low {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(19, 32, 47, 0.54);
+}
+
+.buff-valve-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.buff-valve-item-head strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.buff-valve-item-head span {
+  color: #8eb4d6;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.buff-valve-item p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.buff-valve-item-meta {
+  color: #9eb8d1;
+}
+
+.buff-valve-link {
+  color: #8ecbff;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.buff-valve-link:hover {
+  text-decoration: underline;
+}
+
+.buff-pro-grid {
+  align-items: start;
+}
+
+.buff-pro-source-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.buff-pro-source-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #3d5f7f;
+  background: rgba(17, 31, 46, 0.9);
+  color: #b7d5ef;
+  padding: 2px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.buff-pro-source-chip.is-ok {
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #71e4d0;
+}
+
+.buff-pro-source-chip.is-fail {
+  border-color: rgba(244, 63, 94, 0.48);
+  color: #f2b2bb;
+}
+
+.buff-pro-timeline {
+  display: grid;
+  gap: 8px;
+}
+
+.buff-pro-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.buff-pro-item.is-high {
+  border-color: rgba(244, 63, 94, 0.45);
+  background: rgba(43, 20, 30, 0.58);
+}
+
+.buff-pro-item.is-medium {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(42, 33, 14, 0.52);
+}
+
+.buff-pro-item.is-low {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(19, 32, 47, 0.54);
+}
+
+.buff-pro-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.buff-pro-item-head strong {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.buff-pro-item-head span {
+  color: #8eb4d6;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.buff-pro-item p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.buff-pro-item-meta {
+  color: #9eb8d1;
+}
+
+.buff-pro-link {
+  color: #8ecbff;
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.buff-pro-link:hover {
+  text-decoration: underline;
+}
+
+.buff-impact-wrap {
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.buff-impact-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+  background: rgba(10, 18, 29, 0.62);
+}
+
+.buff-impact-table th,
+.buff-impact-table td {
+  border-bottom: 1px solid rgba(78, 109, 136, 0.28);
+  padding: 9px 10px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.buff-impact-table th {
+  color: #d2e7fb;
+  font-weight: 700;
+}
+
+.buff-impact-table td {
+  color: #b9c9da;
+}
+
+.buff-impact-summary {
+  margin: 4px 0 0;
+  color: #8ea7be;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.buff-impact-direction {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid #3d5f7f;
+  background: rgba(17, 31, 46, 0.9);
+  color: #b7d5ef;
+  padding: 2px 9px;
+  font-size: 11px;
+}
+
+.buff-impact-direction.is-up {
+  border-color: rgba(45, 212, 191, 0.55);
+  color: #71e4d0;
+}
+
+.buff-impact-direction.is-down {
+  border-color: rgba(244, 63, 94, 0.48);
+  color: #f2b2bb;
+}
+
+.buff-impact-direction.is-flat {
+  border-color: rgba(56, 189, 248, 0.48);
+  color: #8fcfff;
+}
+
+.buff-impact-direction.is-insufficient {
+  border-color: rgba(148, 163, 184, 0.45);
+  color: #aebacd;
 }
 
 .buff-factor-wrap {
@@ -2282,6 +2595,15 @@ button.buff-market-item:hover:not(:disabled) {
 
   .buff-market-item-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .buff-market-item-thumb {
+    width: 56px;
+    height: 44px;
+  }
+
+  .buff-overview-image {
+    max-height: 150px;
   }
 
   .scheduler-shell {

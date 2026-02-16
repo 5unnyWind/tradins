@@ -19,6 +19,9 @@ const SOURCE_LABEL: Record<DataSourceHealthItem["source"], string> = {
   yahoo: "Yahoo",
   eastmoney: "Eastmoney",
   reddit: "Reddit",
+  steam: "Steam",
+  hltv: "HLTV",
+  liquipedia: "Liquipedia",
 };
 const TIMELINE_POINT_LIMIT = 12;
 
@@ -117,7 +120,7 @@ export function SourceHealthDashboard() {
         <div>
           <p className="eyebrow">source health panel</p>
           <h1>数据源健康面板</h1>
-          <p className="source-health-muted">实时统计 Yahoo / Eastmoney / Reddit 的命中率、失败率和延迟表现。</p>
+          <p className="source-health-muted">实时统计 Yahoo / Eastmoney / Reddit / Steam / HLTV / Liquipedia 的命中率、失败率和延迟表现。</p>
         </div>
         <div className="source-health-actions">
           <button

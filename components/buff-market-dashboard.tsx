@@ -1,4 +1,5 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -204,6 +205,192 @@ type BuffGoodsApiResponse = {
   error?: string;
 };
 
+type ValveUpdateCategory = "economy" | "maps" | "gameplay" | "competitive" | "anti-cheat" | "misc";
+type ValveUpdateSeverity = "high" | "medium" | "low";
+type ValveImpactDirection = "up" | "down" | "flat" | "insufficient";
+
+type ValveSourceStatus = {
+  source: "steam-api" | "steam-rss";
+  endpoint: string;
+  ok: boolean;
+  itemCount: number;
+  error: string | null;
+};
+
+type ValveOfficialUpdate = {
+  id: string;
+  title: string;
+  url: string | null;
+  author: string | null;
+  publishedAt: string;
+  tags: string[];
+  categories: ValveUpdateCategory[];
+  sections: string[];
+  severity: ValveUpdateSeverity;
+  summary: string;
+  feedLabel: string | null;
+  feedName: string | null;
+};
+
+type ValveUpdatesResult = {
+  appId: number;
+  game: "csgo";
+  fetchedAt: string;
+  sourceStatus: ValveSourceStatus[];
+  updates: ValveOfficialUpdate[];
+  warnings: string[];
+};
+
+type ValveImpactEvent = {
+  id: string;
+  title: string;
+  url: string | null;
+  publishedAt: string;
+  categories: ValveUpdateCategory[];
+  severity: ValveUpdateSeverity;
+  tags: string[];
+  summary: string;
+  baselinePrice: number | null;
+  baselineAt: string | null;
+  returnsPct: {
+    h1: number | null;
+    h24: number | null;
+    h72: number | null;
+  };
+  sampledAt: {
+    h1: string | null;
+    h24: string | null;
+    h72: string | null;
+  };
+  direction: ValveImpactDirection;
+  impactScore: number | null;
+};
+
+type ValveImpactResult = {
+  game: "csgo";
+  goodsId: number;
+  days: number;
+  currency: "CNY" | "USD";
+  fetchedAt: string;
+  auth: {
+    cookieSource: BuffAuthSource;
+    csrfSource: BuffAuthSource;
+  };
+  priceType: string;
+  pricePointCount: number;
+  sourceStatus: ValveSourceStatus[];
+  events: ValveImpactEvent[];
+  warnings: string[];
+};
+
+type ValveUpdatesApiResponse = {
+  ok?: boolean;
+  result?: ValveUpdatesResult;
+  error?: string;
+};
+
+type ValveImpactApiResponse = {
+  ok?: boolean;
+  result?: ValveImpactResult;
+  error?: string;
+};
+
+type ProEventType = "retirement" | "roster_move" | "preference" | "other";
+type ProEventSeverity = "high" | "medium" | "low";
+type ProPlayerStatus = "active" | "retired" | "unknown";
+type ProImpactDirection = "up" | "down" | "flat" | "insufficient";
+
+type ProSourceStatus = {
+  source: "hltv-rss" | "liquipedia-api";
+  endpoint: string;
+  ok: boolean;
+  itemCount: number;
+  error: string | null;
+};
+
+type ProEventPlayer = {
+  name: string;
+  status: ProPlayerStatus;
+  pageTitle: string | null;
+};
+
+type ProPlayerEvent = {
+  id: string;
+  title: string;
+  summary: string;
+  url: string | null;
+  publishedAt: string;
+  eventType: ProEventType;
+  severity: ProEventSeverity;
+  players: ProEventPlayer[];
+  keywords: string[];
+};
+
+type ProPlayerEventsResult = {
+  game: "csgo";
+  fetchedAt: string;
+  sourceStatus: ProSourceStatus[];
+  events: ProPlayerEvent[];
+  warnings: string[];
+};
+
+type ProImpactEvent = {
+  id: string;
+  title: string;
+  url: string | null;
+  publishedAt: string;
+  eventType: ProEventType;
+  severity: ProEventSeverity;
+  players: ProEventPlayer[];
+  keywords: string[];
+  summary: string;
+  relevanceScore: number;
+  baselinePrice: number | null;
+  baselineAt: string | null;
+  returnsPct: {
+    h1: number | null;
+    h24: number | null;
+    h72: number | null;
+  };
+  sampledAt: {
+    h1: string | null;
+    h24: string | null;
+    h72: string | null;
+  };
+  direction: ProImpactDirection;
+  impactScore: number | null;
+};
+
+type ProImpactResult = {
+  game: "csgo";
+  goodsId: number;
+  goodsName: string | null;
+  days: number;
+  currency: "CNY" | "USD";
+  fetchedAt: string;
+  auth: {
+    cookieSource: BuffAuthSource;
+    csrfSource: BuffAuthSource;
+  };
+  priceType: string;
+  pricePointCount: number;
+  sourceStatus: ProSourceStatus[];
+  events: ProImpactEvent[];
+  warnings: string[];
+};
+
+type ProEventsApiResponse = {
+  ok?: boolean;
+  result?: ProPlayerEventsResult;
+  error?: string;
+};
+
+type ProImpactApiResponse = {
+  ok?: boolean;
+  result?: ProImpactResult;
+  error?: string;
+};
+
 type SourceBlueprint = {
   title: string;
   freshness: string;
@@ -349,6 +536,76 @@ function tabLabel(tab: BuffMarketTab): string {
   return "全量搜索";
 }
 
+function fmtSignedPct(value: number | null): string {
+  if (value === null || !Number.isFinite(value)) return "N/A";
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(2)}%`;
+}
+
+function valveCategoryText(category: ValveUpdateCategory): string {
+  if (category === "economy") return "经济/供给";
+  if (category === "maps") return "地图";
+  if (category === "gameplay") return "玩法";
+  if (category === "competitive") return "竞技生态";
+  if (category === "anti-cheat") return "反作弊";
+  return "杂项修复";
+}
+
+function valveSeverityText(severity: ValveUpdateSeverity): string {
+  if (severity === "high") return "高";
+  if (severity === "medium") return "中";
+  return "低";
+}
+
+function valveDirectionText(direction: ValveImpactDirection): string {
+  if (direction === "up") return "上行";
+  if (direction === "down") return "下行";
+  if (direction === "flat") return "震荡";
+  return "样本不足";
+}
+
+function valveSeverityClass(severity: ValveUpdateSeverity): string {
+  return `buff-valve-item is-${severity}`;
+}
+
+function valveDirectionClass(direction: ValveImpactDirection): string {
+  return `buff-impact-direction is-${direction}`;
+}
+
+function proEventTypeText(type: ProEventType): string {
+  if (type === "retirement") return "退役/停赛";
+  if (type === "roster_move") return "转会/替补";
+  if (type === "preference") return "偏好信号";
+  return "其他";
+}
+
+function proSeverityText(severity: ProEventSeverity): string {
+  if (severity === "high") return "高";
+  if (severity === "medium") return "中";
+  return "低";
+}
+
+function proPlayerStatusText(status: ProPlayerStatus): string {
+  if (status === "retired") return "已退役";
+  if (status === "active") return "活跃";
+  return "未知";
+}
+
+function proDirectionText(direction: ProImpactDirection): string {
+  if (direction === "up") return "上行";
+  if (direction === "down") return "下行";
+  if (direction === "flat") return "震荡";
+  return "样本不足";
+}
+
+function proSeverityClass(severity: ProEventSeverity): string {
+  return `buff-pro-item is-${severity}`;
+}
+
+function proDirectionClass(direction: ProImpactDirection): string {
+  return `buff-impact-direction is-${direction}`;
+}
+
 export function BuffMarketDashboard() {
   const [tab, setTab] = useState<BuffMarketTab>("selling");
   const [pageNum, setPageNum] = useState("1");
@@ -363,12 +620,24 @@ export function BuffMarketDashboard() {
 
   const [listLoading, setListLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [valveLoading, setValveLoading] = useState(false);
+  const [valveImpactLoading, setValveImpactLoading] = useState(false);
+  const [proLoading, setProLoading] = useState(false);
+  const [proImpactLoading, setProImpactLoading] = useState(false);
   const [listStatus, setListStatus] = useState("");
   const [detailStatus, setDetailStatus] = useState("");
+  const [valveStatus, setValveStatus] = useState("");
+  const [valveImpactStatus, setValveImpactStatus] = useState("");
+  const [proStatus, setProStatus] = useState("");
+  const [proImpactStatus, setProImpactStatus] = useState("");
 
   const [selectedGoodsId, setSelectedGoodsId] = useState<number | null>(null);
   const [marketResult, setMarketResult] = useState<BuffMarketListResult | null>(null);
   const [dashboard, setDashboard] = useState<BuffGoodsDashboardResult | null>(null);
+  const [valveUpdates, setValveUpdates] = useState<ValveUpdatesResult | null>(null);
+  const [valveImpact, setValveImpact] = useState<ValveImpactResult | null>(null);
+  const [proEvents, setProEvents] = useState<ProPlayerEventsResult | null>(null);
+  const [proImpact, setProImpact] = useState<ProImpactResult | null>(null);
 
   const bootstrappedRef = useRef(false);
 
@@ -376,6 +645,10 @@ export function BuffMarketDashboard() {
     if (!marketResult || !selectedGoodsId) return null;
     return marketResult.items.find((item) => item.goodsId === selectedGoodsId) ?? null;
   }, [marketResult, selectedGoodsId]);
+
+  const selectedIconUrl = useMemo(() => {
+    return dashboard?.goodsInfo?.iconUrl ?? selectedItem?.iconUrl ?? null;
+  }, [dashboard?.goodsInfo?.iconUrl, selectedItem?.iconUrl]);
 
   const chartData = useMemo(() => {
     const points = dashboard?.priceHistory?.primarySeries?.points ?? [];
@@ -394,8 +667,12 @@ export function BuffMarketDashboard() {
     for (const warning of dashboard?.warnings ?? []) merged.add(warning);
     for (const warning of dashboard?.priceHistory?.warnings ?? []) merged.add(warning);
     for (const warning of marketResult?.warnings ?? []) merged.add(warning);
+    for (const warning of valveUpdates?.warnings ?? []) merged.add(warning);
+    for (const warning of valveImpact?.warnings ?? []) merged.add(warning);
+    for (const warning of proEvents?.warnings ?? []) merged.add(warning);
+    for (const warning of proImpact?.warnings ?? []) merged.add(warning);
     return [...merged];
-  }, [dashboard, marketResult]);
+  }, [dashboard, marketResult, proEvents, proImpact, valveImpact, valveUpdates]);
 
   const buildAuthPayload = useCallback(() => {
     const normalizedCookie = cookie.trim();
@@ -405,6 +682,139 @@ export function BuffMarketDashboard() {
       csrfToken: normalizedCsrf || undefined,
     };
   }, [cookie, csrfToken]);
+
+  const loadValveUpdates = useCallback(async () => {
+    setValveLoading(true);
+    setValveStatus("");
+    try {
+      const response = await fetch(`/api/valve/updates?limit=16&_=${Date.now()}`, {
+        cache: "no-store",
+        headers: NO_CACHE_HEADERS,
+      });
+      const data = (await response.json()) as ValveUpdatesApiResponse;
+      if (!response.ok || !data.ok || !data.result) {
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+      setValveUpdates(data.result);
+      setValveStatus(`官方事件刷新成功：${fmtTime(data.result.fetchedAt)}（${data.result.updates.length} 条）`);
+    } catch (error) {
+      setValveUpdates(null);
+      setValveStatus(`官方事件刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setValveLoading(false);
+    }
+  }, []);
+
+  const loadValveImpact = useCallback(
+    async (goodsId: number) => {
+      setValveImpactLoading(true);
+      setValveImpactStatus("");
+
+      try {
+        const dayValue = Number(days);
+        if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 120) {
+          throw new Error("days 需为 1-120 的整数");
+        }
+
+        const response = await fetch("/api/valve/impact", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            goodsId,
+            game: "csgo",
+            days: dayValue,
+            currency: "CNY",
+            eventLimit: 12,
+            ...buildAuthPayload(),
+          }),
+        });
+
+        const data = (await response.json()) as ValveImpactApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setValveImpact(data.result);
+        setValveImpactStatus(`影响回放已刷新：${fmtTime(data.result.fetchedAt)}（${data.result.events.length} 条事件）`);
+      } catch (error) {
+        setValveImpact(null);
+        setValveImpactStatus(`影响回放刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setValveImpactLoading(false);
+      }
+    },
+    [buildAuthPayload, days],
+  );
+
+  const loadProEvents = useCallback(async () => {
+    setProLoading(true);
+    setProStatus("");
+    try {
+      const response = await fetch(`/api/pro/events?limit=16&_=${Date.now()}`, {
+        cache: "no-store",
+        headers: NO_CACHE_HEADERS,
+      });
+      const data = (await response.json()) as ProEventsApiResponse;
+      if (!response.ok || !data.ok || !data.result) {
+        throw new Error(data.error ?? `HTTP ${response.status}`);
+      }
+      setProEvents(data.result);
+      setProStatus(`职业事件刷新成功：${fmtTime(data.result.fetchedAt)}（${data.result.events.length} 条）`);
+    } catch (error) {
+      setProEvents(null);
+      setProStatus(`职业事件刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setProLoading(false);
+    }
+  }, []);
+
+  const loadProImpact = useCallback(
+    async (goodsId: number) => {
+      setProImpactLoading(true);
+      setProImpactStatus("");
+      try {
+        const dayValue = Number(days);
+        if (!Number.isInteger(dayValue) || dayValue < 1 || dayValue > 120) {
+          throw new Error("days 需为 1-120 的整数");
+        }
+
+        const response = await fetch("/api/pro/impact", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            goodsId,
+            game: "csgo",
+            days: dayValue,
+            currency: "CNY",
+            eventLimit: 12,
+            ...buildAuthPayload(),
+          }),
+        });
+
+        const data = (await response.json()) as ProImpactApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setProImpact(data.result);
+        setProImpactStatus(`职业影响回放已刷新：${fmtTime(data.result.fetchedAt)}（${data.result.events.length} 条事件）`);
+      } catch (error) {
+        setProImpact(null);
+        setProImpactStatus(`职业影响回放刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setProImpactLoading(false);
+      }
+    },
+    [buildAuthPayload, days],
+  );
 
   const loadGoodsDashboard = useCallback(
     async (goodsId: number) => {
@@ -439,14 +849,18 @@ export function BuffMarketDashboard() {
 
         setDashboard(data.result);
         setDetailStatus(`详情刷新成功：${fmtTime(data.result.fetchedAt)}`);
+        void loadValveImpact(goodsId);
+        void loadProImpact(goodsId);
       } catch (error) {
         setDashboard(null);
+        setValveImpact(null);
+        setProImpact(null);
         setDetailStatus(`详情刷新失败: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         setDetailLoading(false);
       }
     },
-    [buildAuthPayload, days],
+    [buildAuthPayload, days, loadProImpact, loadValveImpact],
   );
 
   const loadMarketList = useCallback(
@@ -509,6 +923,8 @@ export function BuffMarketDashboard() {
           await loadGoodsDashboard(nextGoodsId);
         } else {
           setDashboard(null);
+          setValveImpact(null);
+          setProImpact(null);
           setDetailStatus("当前筛选条件下没有商品数据。");
         }
       } catch (error) {
@@ -534,7 +950,9 @@ export function BuffMarketDashboard() {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
     void loadMarketList(false);
-  }, [loadMarketList]);
+    void loadValveUpdates();
+    void loadProEvents();
+  }, [loadMarketList, loadProEvents, loadValveUpdates]);
 
   const onMarketSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -574,6 +992,7 @@ export function BuffMarketDashboard() {
             <table className="buff-order-table">
               <thead>
                 <tr>
+                  <th>图片</th>
                   <th>价格</th>
                   <th>数量</th>
                   <th>状态</th>
@@ -583,6 +1002,19 @@ export function BuffMarketDashboard() {
               <tbody>
                 {orderList.items.slice(0, 12).map((item) => (
                   <tr key={`${orderList.kind}-${item.id}`}>
+                    <td>
+                      {item.iconUrl ? (
+                        <img
+                          className="buff-order-thumb"
+                          src={item.iconUrl}
+                          alt="订单饰品图"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <span className="buff-order-thumb-empty">-</span>
+                      )}
+                    </td>
                     <td>{fmtPrice(item.price)}</td>
                     <td>{fmtCount(item.num)}</td>
                     <td>{item.stateText ?? "-"}</td>
@@ -709,6 +1141,10 @@ export function BuffMarketDashboard() {
 
         {listStatus ? <p className="status">{listStatus}</p> : null}
         {detailStatus ? <p className="status">{detailStatus}</p> : null}
+        {valveStatus ? <p className="status">{valveStatus}</p> : null}
+        {valveImpactStatus ? <p className="status">{valveImpactStatus}</p> : null}
+        {proStatus ? <p className="status">{proStatus}</p> : null}
+        {proImpactStatus ? <p className="status">{proImpactStatus}</p> : null}
       </form>
 
       <section className="grid cols-2 buff-explorer-grid">
@@ -737,6 +1173,15 @@ export function BuffMarketDashboard() {
                     void onPickGoods(item.goodsId);
                   }}
                 >
+                  {item.iconUrl ? (
+                    <img
+                      className="buff-market-item-thumb"
+                      src={item.iconUrl}
+                      alt={item.name ?? `goods ${item.goodsId}`}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  ) : null}
                   <div className="buff-market-item-head">
                     <strong>{item.name ?? `goods_id ${item.goodsId}`}</strong>
                     <span>#{item.goodsId}</span>
@@ -763,6 +1208,18 @@ export function BuffMarketDashboard() {
               {dashboard ? `goods_id=${dashboard.goodsId} · ${fmtTime(dashboard.fetchedAt)}` : "未加载"}
             </span>
           </div>
+
+          {selectedIconUrl ? (
+            <div className="buff-overview-visual">
+              <img
+                className="buff-overview-image"
+                src={selectedIconUrl}
+                alt={dashboard?.goodsInfo?.name ?? selectedItem?.name ?? "商品图片"}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          ) : null}
 
           <div className="metric-grid">
             <div className="metric">
@@ -892,6 +1349,276 @@ export function BuffMarketDashboard() {
           </section>
         </>
       ) : null}
+
+      <section className="grid cols-2 buff-valve-grid">
+        <article className="panel">
+          <div className="panel-header">
+            <h2>V 社官方变更时间线</h2>
+            <span>{valveUpdates ? `最近 ${valveUpdates.updates.length} 条 · ${fmtTime(valveUpdates.fetchedAt)}` : "未加载"}</span>
+          </div>
+          <div className="buff-action-row">
+            <button type="button" disabled={valveLoading} onClick={() => void loadValveUpdates()}>
+              {valveLoading ? "官方事件加载中..." : "刷新官方事件"}
+            </button>
+          </div>
+
+          <div className="buff-valve-source-list">
+            {(valveUpdates?.sourceStatus ?? []).map((item) => (
+              <span className={`buff-valve-source-chip${item.ok ? " is-ok" : " is-fail"}`} key={`${item.source}-${item.endpoint}`}>
+                {item.source === "steam-api" ? "ISteamNews" : "Steam RSS"} · {item.ok ? `OK (${item.itemCount})` : "FAIL"}
+              </span>
+            ))}
+          </div>
+
+          <div className="buff-valve-timeline">
+            {(valveUpdates?.updates ?? []).map((item) => (
+              <article className={valveSeverityClass(item.severity)} key={item.id}>
+                <div className="buff-valve-item-head">
+                  <strong>{item.title}</strong>
+                  <span>{fmtTime(item.publishedAt)}</span>
+                </div>
+                <p>{item.summary || "无摘要"}</p>
+                <p className="buff-valve-item-meta">
+                  分类：{item.categories.map((category) => valveCategoryText(category)).join(" / ")} · 严重度：
+                  {valveSeverityText(item.severity)}
+                </p>
+                {item.tags.length ? <p className="buff-valve-item-meta">标签：{item.tags.join(" / ")}</p> : null}
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer" className="buff-valve-link">
+                    查看原始公告
+                  </a>
+                ) : null}
+              </article>
+            ))}
+            {!valveUpdates?.updates.length ? <p className="buff-muted">暂无官方事件数据。</p> : null}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-header">
+            <h2>官方变更影响回放</h2>
+            <span>
+              {selectedGoodsId
+                ? `goods_id=${selectedGoodsId} · 价格点 ${fmtCount(valveImpact?.pricePointCount ?? null)}`
+                : "请先选择商品"}
+            </span>
+          </div>
+
+          <div className="buff-action-row">
+            <button
+              type="button"
+              disabled={valveImpactLoading || selectedGoodsId === null}
+              onClick={() => {
+                if (selectedGoodsId !== null) {
+                  void loadValveImpact(selectedGoodsId);
+                }
+              }}
+            >
+              {valveImpactLoading ? "影响分析加载中..." : "刷新事件影响回放"}
+            </button>
+          </div>
+
+          {valveImpact?.sourceStatus?.length ? (
+            <div className="buff-valve-source-list">
+              {valveImpact.sourceStatus.map((item) => (
+                <span className={`buff-valve-source-chip${item.ok ? " is-ok" : " is-fail"}`} key={`impact-${item.source}-${item.endpoint}`}>
+                  {item.source === "steam-api" ? "ISteamNews" : "Steam RSS"} · {item.ok ? "可用" : "失败"}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {selectedGoodsId === null ? (
+            <p className="buff-muted">先从左侧列表选择商品，或输入 goods_id 拉取详情后再分析。</p>
+          ) : (
+            <div className="buff-impact-wrap">
+              <table className="buff-impact-table">
+                <thead>
+                  <tr>
+                    <th>事件时间</th>
+                    <th>事件</th>
+                    <th>分类 / 严重度</th>
+                    <th>1h</th>
+                    <th>24h</th>
+                    <th>72h</th>
+                    <th>方向</th>
+                    <th>影响分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(valveImpact?.events ?? []).map((item) => (
+                    <tr key={`impact-${item.id}`}>
+                      <td>{fmtTime(item.publishedAt)}</td>
+                      <td>
+                        <strong>{item.title}</strong>
+                        <p className="buff-impact-summary">{item.summary || "无摘要"}</p>
+                      </td>
+                      <td>
+                        {item.categories.map((category) => valveCategoryText(category)).join(" / ")}
+                        <br />
+                        {valveSeverityText(item.severity)}
+                      </td>
+                      <td>{fmtSignedPct(item.returnsPct.h1)}</td>
+                      <td>{fmtSignedPct(item.returnsPct.h24)}</td>
+                      <td>{fmtSignedPct(item.returnsPct.h72)}</td>
+                      <td>
+                        <span className={valveDirectionClass(item.direction)}>{valveDirectionText(item.direction)}</span>
+                      </td>
+                      <td>{item.impactScore === null ? "N/A" : item.impactScore.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                  {!valveImpact?.events?.length ? (
+                    <tr>
+                      <td colSpan={8}>暂无可计算事件。</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <section className="grid cols-2 buff-pro-grid">
+        <article className="panel">
+          <div className="panel-header">
+            <h2>职业选手事件时间线</h2>
+            <span>{proEvents ? `最近 ${proEvents.events.length} 条 · ${fmtTime(proEvents.fetchedAt)}` : "未加载"}</span>
+          </div>
+
+          <div className="buff-action-row">
+            <button type="button" disabled={proLoading} onClick={() => void loadProEvents()}>
+              {proLoading ? "职业事件加载中..." : "刷新职业事件"}
+            </button>
+          </div>
+
+          <div className="buff-pro-source-list">
+            {(proEvents?.sourceStatus ?? []).map((item) => (
+              <span className={`buff-pro-source-chip${item.ok ? " is-ok" : " is-fail"}`} key={`${item.source}-${item.endpoint}`}>
+                {item.source === "hltv-rss" ? "HLTV RSS" : "Liquipedia API"} · {item.ok ? `OK (${item.itemCount})` : "FAIL"}
+              </span>
+            ))}
+          </div>
+
+          <div className="buff-pro-timeline">
+            {(proEvents?.events ?? []).map((item) => (
+              <article className={proSeverityClass(item.severity)} key={`pro-event-${item.id}`}>
+                <div className="buff-pro-item-head">
+                  <strong>{item.title}</strong>
+                  <span>{fmtTime(item.publishedAt)}</span>
+                </div>
+                <p>{item.summary || "无摘要"}</p>
+                <p className="buff-pro-item-meta">
+                  类型：{proEventTypeText(item.eventType)} · 严重度：{proSeverityText(item.severity)}
+                </p>
+                {item.players.length ? (
+                  <p className="buff-pro-item-meta">
+                    选手：
+                    {item.players.map((player) => `${player.name}(${proPlayerStatusText(player.status)})`).join(" / ")}
+                  </p>
+                ) : null}
+                {item.keywords.length ? <p className="buff-pro-item-meta">关键词：{item.keywords.join(" / ")}</p> : null}
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noreferrer" className="buff-pro-link">
+                    查看原始新闻
+                  </a>
+                ) : null}
+              </article>
+            ))}
+            {!proEvents?.events.length ? <p className="buff-muted">暂无职业事件。</p> : null}
+          </div>
+        </article>
+
+        <article className="panel">
+          <div className="panel-header">
+            <h2>职业事件影响回放</h2>
+            <span>
+              {selectedGoodsId
+                ? `goods_id=${selectedGoodsId} · 价格点 ${fmtCount(proImpact?.pricePointCount ?? null)}`
+                : "请先选择商品"}
+            </span>
+          </div>
+
+          <div className="buff-action-row">
+            <button
+              type="button"
+              disabled={proImpactLoading || selectedGoodsId === null}
+              onClick={() => {
+                if (selectedGoodsId !== null) {
+                  void loadProImpact(selectedGoodsId);
+                }
+              }}
+            >
+              {proImpactLoading ? "职业影响分析加载中..." : "刷新职业影响回放"}
+            </button>
+          </div>
+
+          {proImpact?.sourceStatus?.length ? (
+            <div className="buff-pro-source-list">
+              {proImpact.sourceStatus.map((item) => (
+                <span className={`buff-pro-source-chip${item.ok ? " is-ok" : " is-fail"}`} key={`pro-impact-${item.source}-${item.endpoint}`}>
+                  {item.source === "hltv-rss" ? "HLTV RSS" : "Liquipedia API"} · {item.ok ? "可用" : "失败"}
+                </span>
+              ))}
+            </div>
+          ) : null}
+
+          {selectedGoodsId === null ? (
+            <p className="buff-muted">先从左侧列表选择商品，或输入 goods_id 拉取详情后再分析。</p>
+          ) : (
+            <div className="buff-impact-wrap">
+              <table className="buff-impact-table">
+                <thead>
+                  <tr>
+                    <th>事件时间</th>
+                    <th>事件</th>
+                    <th>类型 / 严重度</th>
+                    <th>关联分</th>
+                    <th>1h</th>
+                    <th>24h</th>
+                    <th>72h</th>
+                    <th>方向</th>
+                    <th>影响分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(proImpact?.events ?? []).map((item) => (
+                    <tr key={`pro-impact-row-${item.id}`}>
+                      <td>{fmtTime(item.publishedAt)}</td>
+                      <td>
+                        <strong>{item.title}</strong>
+                        <p className="buff-impact-summary">{item.summary || "无摘要"}</p>
+                      </td>
+                      <td>
+                        {proEventTypeText(item.eventType)} / {proSeverityText(item.severity)}
+                        {item.players.length ? (
+                          <>
+                            <br />
+                            {item.players.map((player) => `${player.name}(${proPlayerStatusText(player.status)})`).join(" / ")}
+                          </>
+                        ) : null}
+                      </td>
+                      <td>{item.relevanceScore.toFixed(3)}</td>
+                      <td>{fmtSignedPct(item.returnsPct.h1)}</td>
+                      <td>{fmtSignedPct(item.returnsPct.h24)}</td>
+                      <td>{fmtSignedPct(item.returnsPct.h72)}</td>
+                      <td>
+                        <span className={proDirectionClass(item.direction)}>{proDirectionText(item.direction)}</span>
+                      </td>
+                      <td>{item.impactScore === null ? "N/A" : item.impactScore.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                  {!proImpact?.events?.length ? (
+                    <tr>
+                      <td colSpan={9}>暂无可计算职业事件。</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
 
       <section className="panel">
         <div className="panel-header">

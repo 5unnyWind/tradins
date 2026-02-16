@@ -8,7 +8,7 @@ import type {
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-const SOURCE_KEYS: DataSourceKey[] = ["yahoo", "eastmoney", "reddit"];
+const SOURCE_KEYS: DataSourceKey[] = ["yahoo", "eastmoney", "reddit", "steam", "hltv", "liquipedia"];
 const LATENCY_WINDOW = 240;
 const SERIES_WINDOW_MINUTES = 360;
 const SERIES_BUCKET_MINUTES = 5;
@@ -77,6 +77,9 @@ const sourceHealthState: Record<DataSourceKey, SourceHealthState> = {
   yahoo: createEmptyState(),
   eastmoney: createEmptyState(),
   reddit: createEmptyState(),
+  steam: createEmptyState(),
+  hltv: createEmptyState(),
+  liquipedia: createEmptyState(),
 };
 
 let sqlTag: SqlTag | null = null;
