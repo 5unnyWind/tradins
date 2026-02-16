@@ -217,6 +217,35 @@ type BuffGoodsApiResponse = {
   error?: string;
 };
 
+type BuffFavoritesEndpointStatus = {
+  goodsId: number;
+  endpoint: string;
+  ok: boolean;
+  code: string;
+  error: string | null;
+};
+
+type BuffFavoritesLookupResult = {
+  game: "csgo";
+  fetchedAt: string;
+  auth: {
+    cookieSource: BuffAuthSource;
+    csrfSource: BuffAuthSource;
+  };
+  requestedCount: number;
+  successCount: number;
+  failedGoodsIds: number[];
+  items: BuffMarketListItem[];
+  endpointStatus: BuffFavoritesEndpointStatus[];
+  warnings: string[];
+};
+
+type BuffFavoritesLookupApiResponse = {
+  ok?: boolean;
+  result?: BuffFavoritesLookupResult;
+  error?: string;
+};
+
 type BuffForecastTrend = "bullish" | "bearish" | "sideways";
 type BuffForecastRiskLevel = "low" | "medium" | "high";
 type BuffForecastDecision = "buy" | "hold" | "reduce";
@@ -765,6 +794,23 @@ function marketItemDisplayName(item: {
   return item.name ?? item.shortName ?? item.marketHashName ?? `goods_id ${item.goodsId}`;
 }
 
+function favoriteToMarketListItem(item: BuffFavoriteItem): BuffMarketListItem {
+  return {
+    goodsId: item.goodsId,
+    name: item.name,
+    shortName: item.shortName,
+    marketHashName: item.marketHashName,
+    iconUrl: item.iconUrl,
+    sellMinPrice: null,
+    buyMaxPrice: null,
+    sellNum: null,
+    buyNum: null,
+    transactedNum: null,
+    steamPriceCny: null,
+    hasBuffPriceHistory: false,
+  };
+}
+
 function orderTitle(kind: BuffOrderListResult["kind"]): string {
   if (kind === "sell") return "在售挂单";
   if (kind === "buy") return "求购挂单";
@@ -999,6 +1045,8 @@ export function BuffMarketDashboard() {
   const [intelAlerts, setIntelAlerts] = useState<IntelAlertsApiResponse["result"] | null>(null);
   const [favoriteItems, setFavoriteItems] = useState<BuffFavoriteItem[]>([]);
   const [favoritesHydrated, setFavoritesHydrated] = useState(false);
+  const [favoriteLookupLoading, setFavoriteLookupLoading] = useState(false);
+  const [favoriteLookupResult, setFavoriteLookupResult] = useState<BuffFavoritesLookupResult | null>(null);
 
   const bootstrappedRef = useRef(false);
   const marketListRef = useRef<HTMLDivElement | null>(null);
@@ -1022,20 +1070,29 @@ export function BuffMarketDashboard() {
     return targets;
   }, [forecast]);
 
-  const selectedItem = useMemo(() => {
-    if (!marketResult || !selectedGoodsId) return null;
-    return marketResult.items.find((item) => item.goodsId === selectedGoodsId) ?? null;
-  }, [marketResult, selectedGoodsId]);
-
   const favoriteGoodsIds = useMemo(() => {
     return new Set(favoriteItems.map((item) => item.goodsId));
   }, [favoriteItems]);
 
+  const favoriteLookupItemMap = useMemo(() => {
+    return new Map((favoriteLookupResult?.items ?? []).map((item) => [item.goodsId, item]));
+  }, [favoriteLookupResult?.items]);
+
   const displayedMarketItems = useMemo(() => {
     const items = marketResult?.items ?? [];
     if (!favoritesOnly) return items;
-    return items.filter((item) => favoriteGoodsIds.has(item.goodsId));
-  }, [favoriteGoodsIds, favoritesOnly, marketResult?.items]);
+    return favoriteItems.map((favorite) => favoriteLookupItemMap.get(favorite.goodsId) ?? favoriteToMarketListItem(favorite));
+  }, [favoriteItems, favoriteLookupItemMap, favoritesOnly, marketResult?.items]);
+
+  const selectedItem = useMemo(() => {
+    if (selectedGoodsId === null) return null;
+    const fromMarket = (marketResult?.items ?? []).find((item) => item.goodsId === selectedGoodsId);
+    if (fromMarket) return fromMarket;
+    const fromFavoriteLookup = favoriteLookupItemMap.get(selectedGoodsId);
+    if (fromFavoriteLookup) return fromFavoriteLookup;
+    const fromFavoriteLocal = favoriteItems.find((item) => item.goodsId === selectedGoodsId);
+    return fromFavoriteLocal ? favoriteToMarketListItem(fromFavoriteLocal) : null;
+  }, [favoriteItems, favoriteLookupItemMap, marketResult?.items, selectedGoodsId]);
 
   const hasNextMarketPage = useMemo(() => {
     if (!marketResult) return false;
@@ -1157,6 +1214,54 @@ export function BuffMarketDashboard() {
       // Ignore quota or privacy mode failures.
     }
   }, [favoriteItems, favoritesHydrated]);
+
+  const loadFavoriteMarketItems = useCallback(
+    async (goodsIds: number[]) => {
+      if (!goodsIds.length) {
+        setFavoriteLookupResult(null);
+        return;
+      }
+
+      setFavoriteLookupLoading(true);
+      try {
+        const response = await fetch("/api/buff/favorites", {
+          method: "POST",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...NO_CACHE_HEADERS,
+          },
+          body: JSON.stringify({
+            goodsIds,
+            game: "csgo",
+            ...buildAuthPayload(),
+          }),
+        });
+
+        const data = (await response.json()) as BuffFavoritesLookupApiResponse;
+        if (!response.ok || !data.ok || !data.result) {
+          throw new Error(data.error ?? `HTTP ${response.status}`);
+        }
+
+        setFavoriteLookupResult(data.result);
+      } catch (error) {
+        setListStatus(`收藏商品拉取失败: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        setFavoriteLookupLoading(false);
+      }
+    },
+    [buildAuthPayload],
+  );
+
+  useEffect(() => {
+    if (!favoritesOnly) return;
+    const goodsIds = favoriteItems.map((item) => item.goodsId);
+    if (!goodsIds.length) {
+      setFavoriteLookupResult(null);
+      return;
+    }
+    void loadFavoriteMarketItems(goodsIds);
+  }, [favoriteItems, favoritesOnly, loadFavoriteMarketItems]);
 
   const loadForecast = useCallback(
     async (goodsId: number) => {
@@ -1759,7 +1864,7 @@ export function BuffMarketDashboard() {
         </div>
 
         <details className="buff-advanced-filters">
-          <summary>更多筛选与参数</summary>
+          <summary>更多筛选与参数、操作</summary>
           <div className="buff-query-grid">
             <label>
               列表类型
@@ -1844,15 +1949,9 @@ export function BuffMarketDashboard() {
               />
             </label>
           </div>
-        </details>
 
-        <div className="buff-action-row">
-          <button type="submit" className="buff-primary-action" disabled={listLoading || listAppendLoading || detailLoading}>
-            {listLoading ? "搜索中..." : "搜索"}
-          </button>
-
-          <details className="buff-secondary-actions">
-            <summary>更多操作</summary>
+          <div className="buff-more-actions">
+            <p className="buff-more-subtitle">更多操作</p>
             <div className="buff-secondary-action-list">
               <button
                 type="button"
@@ -1898,7 +1997,13 @@ export function BuffMarketDashboard() {
                 {intelAlertsLoading ? "告警加载中..." : "刷新异动告警"}
               </button>
             </div>
-          </details>
+          </div>
+        </details>
+
+        <div className="buff-action-row">
+          <button type="submit" className="buff-primary-action" disabled={listLoading || listAppendLoading || detailLoading}>
+            {listLoading ? "搜索中..." : "搜索"}
+          </button>
         </div>
 
         {listStatus ? <p className="status">{listStatus}</p> : null}
@@ -1996,7 +2101,16 @@ export function BuffMarketDashboard() {
                 <div className="buff-market-list-sentinel" ref={marketListSentinelRef} aria-hidden="true" />
 
                 {favoritesOnly ? (
-                  <p className="buff-market-list-footnote">只显示已收藏商品（来自当前已加载分页）</p>
+                  favoriteLookupLoading ? (
+                    <p className="buff-market-list-footnote is-loading">正在拉取收藏商品数据...</p>
+                  ) : (
+                    <p className="buff-market-list-footnote">
+                      已同步收藏数据 {favoriteLookupResult?.successCount ?? 0}/{favoriteItems.length}
+                      {favoriteLookupResult?.failedGoodsIds?.length
+                        ? ` · 失败 ${favoriteLookupResult.failedGoodsIds.length}`
+                        : ""}
+                    </p>
+                  )
                 ) : listAppendLoading ? (
                   <p className="buff-market-list-footnote is-loading">正在加载下一页...</p>
                 ) : hasNextMarketPage ? (

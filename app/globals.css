@@ -1729,44 +1729,20 @@ button.record-item:hover:not(:disabled) {
   min-height: 40px;
 }
 
-.buff-secondary-actions {
-  border: 1px solid rgba(66, 96, 122, 0.52);
-  border-radius: 12px;
-  background: rgba(11, 19, 30, 0.56);
-  padding: 8px 10px;
-  min-width: min(100%, 220px);
+.buff-more-actions {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(86, 117, 145, 0.48);
 }
 
-.buff-secondary-actions > summary {
-  cursor: pointer;
+.buff-more-subtitle {
+  margin: 0 0 8px;
   color: #c5dbef;
   font-size: 12px;
   font-weight: 700;
-  list-style: none;
-}
-
-.buff-secondary-actions > summary::-webkit-details-marker {
-  display: none;
-}
-
-.buff-secondary-actions > summary::after {
-  content: "展开";
-  margin-left: 8px;
-  color: #8fb3d6;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.buff-secondary-actions[open] > summary::after {
-  content: "收起";
 }
 
 .buff-secondary-action-list {
-  display: none;
-}
-
-.buff-secondary-actions[open] .buff-secondary-action-list {
-  margin-top: 8px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
