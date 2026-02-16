@@ -1374,6 +1374,9 @@ export function AnalysisDashboard({
                 <a className="hero-link-button" href="/source-health">
                   <span>数据源健康</span>
                 </a>
+                <a className="hero-link-button" href="/buff-cs2">
+                  <span>BUFF CS2</span>
+                </a>
               </div>
               <div className="hero-flow">
                 <h2>数据流图</h2>

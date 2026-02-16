@@ -138,6 +138,9 @@ export function SourceHealthDashboard() {
           <a className="hero-link-button" href="/">
             返回分析页
           </a>
+          <a className="hero-link-button" href="/buff-cs2">
+            BUFF CS2
+          </a>
         </div>
       </section>
 

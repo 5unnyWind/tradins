@@ -102,6 +102,9 @@ export function BacktestDashboard() {
           <a className="hero-link-button" href="/source-health">
             数据源健康
           </a>
+          <a className="hero-link-button" href="/buff-cs2">
+            BUFF CS2
+          </a>
         </div>
       </section>
 

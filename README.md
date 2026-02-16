@@ -87,6 +87,16 @@ npm run dev
 - `vercel.json` 已内置 Cron 配置（`/api/scheduler/run`）
   - 注意：Vercel Hobby 仅支持“每天一次”Cron。若需要分钟级调度，请升级 Pro 或使用外部 Cron 调 `POST/GET /api/scheduler/run`。
 
+## CS2 BUFF 数据源子页面
+
+- 路径：`/buff-cs2`
+- 接口（已实现）：
+  - `POST /api/buff/market`：首页列表族（`goods` / `goods/buying` / `goods/bundle` / `goods/all`）
+  - `POST /api/buff/goods/:goodsId`：商品详情聚合（`goods/info`、`goods_tab_list`、`sell_order`、`buy_order`、`bill_order`、`price_history/*`）
+  - `GET|POST /api/buff/price-history`：单独拉取价格走势（兼容接口）
+- 支持读取 `.env.local` 的 `BUFF_COOKIE`、`BUFF_CSRF_TOKEN`、`BUFF_USER_AGENT`
+- 页面用途：展示列表筛选、单品挂单/成交/走势、端点状态与数据源因子映射
+
 ## 你会在页面看到什么
 
 - 市场快照：价格、涨跌、RSI、量比、走势图、快照时间
