@@ -704,6 +704,17 @@ function marketItemClass(selected: boolean): string {
   return `buff-market-item${selected ? " is-active" : ""}`;
 }
 
+function mergeMarketItems(current: BuffMarketListItem[], incoming: BuffMarketListItem[]): BuffMarketListItem[] {
+  const merged = [...current];
+  const existingGoodsIds = new Set(current.map((item) => item.goodsId));
+  for (const item of incoming) {
+    if (existingGoodsIds.has(item.goodsId)) continue;
+    merged.push(item);
+    existingGoodsIds.add(item.goodsId);
+  }
+  return merged;
+}
+
 function orderTitle(kind: BuffOrderListResult["kind"]): string {
   if (kind === "sell") return "在售挂单";
   if (kind === "buy") return "求购挂单";
@@ -904,6 +915,7 @@ export function BuffMarketDashboard() {
   const [csrfToken, setCsrfToken] = useState("");
 
   const [listLoading, setListLoading] = useState(false);
+  const [listAppendLoading, setListAppendLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [valveLoading, setValveLoading] = useState(false);
@@ -936,6 +948,9 @@ export function BuffMarketDashboard() {
   const [intelAlerts, setIntelAlerts] = useState<IntelAlertsApiResponse["result"] | null>(null);
 
   const bootstrappedRef = useRef(false);
+  const marketListRef = useRef<HTMLDivElement | null>(null);
+  const marketListSentinelRef = useRef<HTMLDivElement | null>(null);
+  const marketPagingLockRef = useRef(false);
 
   const quickJumpTargets = useMemo<QuickJumpTarget[]>(() => {
     const targets: QuickJumpTarget[] = [
@@ -958,6 +973,12 @@ export function BuffMarketDashboard() {
     if (!marketResult || !selectedGoodsId) return null;
     return marketResult.items.find((item) => item.goodsId === selectedGoodsId) ?? null;
   }, [marketResult, selectedGoodsId]);
+
+  const hasNextMarketPage = useMemo(() => {
+    if (!marketResult) return false;
+    const totalPage = marketResult.totalPage || 1;
+    return marketResult.pageNum < totalPage;
+  }, [marketResult]);
 
   const selectedIconUrl = useMemo(() => {
     return dashboard?.goodsInfo?.iconUrl ?? selectedItem?.iconUrl ?? null;
@@ -1326,12 +1347,24 @@ export function BuffMarketDashboard() {
   );
 
   const loadMarketList = useCallback(
-    async (keepSelection = true) => {
-      setListLoading(true);
+    async ({
+      keepSelection = true,
+      append = false,
+      pageNumOverride,
+    }: {
+      keepSelection?: boolean;
+      append?: boolean;
+      pageNumOverride?: number;
+    } = {}) => {
+      if (append) {
+        setListAppendLoading(true);
+      } else {
+        setListLoading(true);
+      }
       setListStatus("");
 
       try {
-        const normalizedPageNum = Number(pageNum);
+        const normalizedPageNum = pageNumOverride ?? Number(pageNum);
         const normalizedPageSize = Number(pageSize);
         if (!Number.isInteger(normalizedPageNum) || normalizedPageNum < 1 || normalizedPageNum > 10_000) {
           throw new Error("page_num 需为 1-10000 的整数");
@@ -1363,15 +1396,33 @@ export function BuffMarketDashboard() {
         if (!response.ok || !data.ok || !data.result) {
           throw new Error(data.error ?? `HTTP ${response.status}`);
         }
+        const result = data.result;
 
-        setMarketResult(data.result);
+        if (append) {
+          setMarketResult((previous) => {
+            if (!previous) return result;
+            return {
+              ...result,
+              items: mergeMarketItems(previous.items, result.items),
+            };
+          });
+          setListStatus(
+            `列表已加载到第 ${result.pageNum}/${result.totalPage || 1} 页（累计 ${fmtCount(result.totalCount)} 条）`,
+          );
+          return;
+        }
+
+        setMarketResult({
+          ...result,
+          items: [...result.items],
+        });
         setListStatus(
-          `列表刷新成功：${tabLabel(data.result.tab)}，第 ${data.result.pageNum}/${data.result.totalPage || 1} 页，共 ${fmtCount(
-            data.result.totalCount,
+          `列表刷新成功：${tabLabel(result.tab)}，第 ${result.pageNum}/${result.totalPage || 1} 页，共 ${fmtCount(
+            result.totalCount,
           )} 条`,
         );
 
-        const goodsIds = data.result.items.map((item) => item.goodsId);
+        const goodsIds = result.items.map((item) => item.goodsId);
         const currentValid = selectedGoodsId !== null && goodsIds.includes(selectedGoodsId);
         let nextGoodsId = selectedGoodsId;
 
@@ -1391,9 +1442,14 @@ export function BuffMarketDashboard() {
           setDetailStatus("当前筛选条件下没有商品数据。");
         }
       } catch (error) {
-        setListStatus(`列表刷新失败: ${error instanceof Error ? error.message : String(error)}`);
+        const action = append ? "下一页加载失败" : "列表刷新失败";
+        setListStatus(`${action}: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
-        setListLoading(false);
+        if (append) {
+          setListAppendLoading(false);
+        } else {
+          setListLoading(false);
+        }
       }
     },
     [
@@ -1412,16 +1468,56 @@ export function BuffMarketDashboard() {
   useEffect(() => {
     if (bootstrappedRef.current) return;
     bootstrappedRef.current = true;
-    void loadMarketList(false);
+    void loadMarketList({ keepSelection: false });
     void loadValveUpdates();
     void loadProEvents();
     void loadIntelEvaluation(null);
     void loadIntelAlerts(null);
   }, [loadIntelAlerts, loadIntelEvaluation, loadMarketList, loadProEvents, loadValveUpdates]);
 
+  const loadNextMarketPage = useCallback(async () => {
+    if (!marketResult || listLoading || listAppendLoading || marketPagingLockRef.current) return;
+    const totalPage = marketResult.totalPage || 1;
+    const nextPageNum = marketResult.pageNum + 1;
+    if (nextPageNum > totalPage) return;
+
+    marketPagingLockRef.current = true;
+    try {
+      await loadMarketList({
+        append: true,
+        keepSelection: true,
+        pageNumOverride: nextPageNum,
+      });
+    } finally {
+      marketPagingLockRef.current = false;
+    }
+  }, [listAppendLoading, listLoading, loadMarketList, marketResult]);
+
+  useEffect(() => {
+    const root = marketListRef.current;
+    const target = marketListSentinelRef.current;
+    if (!root || !target || !hasNextMarketPage) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadNextMarketPage();
+        }
+      },
+      {
+        root,
+        rootMargin: "0px 0px 140px 0px",
+        threshold: 0.08,
+      },
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasNextMarketPage, loadNextMarketPage]);
+
   const onMarketSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await loadMarketList(true);
+    await loadMarketList({ keepSelection: true });
   };
 
   const runManualGoodsLookup = async () => {
@@ -1622,52 +1718,58 @@ export function BuffMarketDashboard() {
         </details>
 
         <div className="buff-action-row">
-          <button type="submit" className="buff-primary-action" disabled={listLoading || detailLoading}>
-            {listLoading ? "列表加载中..." : "刷新列表并拉取详情"}
+          <button type="submit" className="buff-primary-action" disabled={listLoading || listAppendLoading || detailLoading}>
+            {listLoading ? "搜索中..." : "搜索"}
           </button>
-          <button
-            type="button"
-            className="buff-secondary-action"
-            disabled={detailLoading || selectedGoodsId === null}
-            onClick={() => {
-              if (selectedGoodsId !== null) {
-                void loadGoodsDashboard(selectedGoodsId);
-              }
-            }}
-          >
-            {detailLoading ? "详情加载中..." : "刷新当前商品详情"}
-          </button>
-          <button type="button" className="buff-secondary-action" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
-            按 goods_id 拉取详情
-          </button>
-          <button
-            type="button"
-            className="buff-secondary-action"
-            disabled={forecastLoading || selectedGoodsId === null}
-            onClick={() => {
-              if (selectedGoodsId !== null) {
-                void loadForecast(selectedGoodsId);
-              }
-            }}
-          >
-            {forecastLoading ? "预测加载中..." : "刷新趋势预测"}
-          </button>
-          <button
-            type="button"
-            className="buff-secondary-action"
-            disabled={intelEvaluationLoading}
-            onClick={() => void loadIntelEvaluation(selectedGoodsId)}
-          >
-            {intelEvaluationLoading ? "评估加载中..." : "刷新因子评估"}
-          </button>
-          <button
-            type="button"
-            className="buff-secondary-action"
-            disabled={intelAlertsLoading}
-            onClick={() => void loadIntelAlerts(selectedGoodsId)}
-          >
-            {intelAlertsLoading ? "告警加载中..." : "刷新异动告警"}
-          </button>
+
+          <details className="buff-secondary-actions">
+            <summary>更多操作</summary>
+            <div className="buff-secondary-action-list">
+              <button
+                type="button"
+                className="buff-secondary-action"
+                disabled={detailLoading || selectedGoodsId === null}
+                onClick={() => {
+                  if (selectedGoodsId !== null) {
+                    void loadGoodsDashboard(selectedGoodsId);
+                  }
+                }}
+              >
+                {detailLoading ? "详情加载中..." : "刷新当前商品详情"}
+              </button>
+              <button type="button" className="buff-secondary-action" disabled={detailLoading} onClick={() => void runManualGoodsLookup()}>
+                按 goods_id 拉取详情
+              </button>
+              <button
+                type="button"
+                className="buff-secondary-action"
+                disabled={forecastLoading || selectedGoodsId === null}
+                onClick={() => {
+                  if (selectedGoodsId !== null) {
+                    void loadForecast(selectedGoodsId);
+                  }
+                }}
+              >
+                {forecastLoading ? "预测加载中..." : "刷新趋势预测"}
+              </button>
+              <button
+                type="button"
+                className="buff-secondary-action"
+                disabled={intelEvaluationLoading}
+                onClick={() => void loadIntelEvaluation(selectedGoodsId)}
+              >
+                {intelEvaluationLoading ? "评估加载中..." : "刷新因子评估"}
+              </button>
+              <button
+                type="button"
+                className="buff-secondary-action"
+                disabled={intelAlertsLoading}
+                onClick={() => void loadIntelAlerts(selectedGoodsId)}
+              >
+                {intelAlertsLoading ? "告警加载中..." : "刷新异动告警"}
+              </button>
+            </div>
+          </details>
         </div>
 
         {listStatus ? <p className="status">{listStatus}</p> : null}
@@ -1697,39 +1799,51 @@ export function BuffMarketDashboard() {
               )}
             </span>
           </div>
-          <div className="buff-market-list">
+          <div className="buff-market-list" ref={marketListRef}>
             {marketResult?.items.length ? (
-              marketResult.items.map((item) => (
-                <button
-                  key={item.goodsId}
-                  type="button"
-                  className={marketItemClass(item.goodsId === selectedGoodsId)}
-                  onClick={() => {
-                    void onPickGoods(item.goodsId);
-                  }}
-                >
-                  {item.iconUrl ? (
-                    <img
-                      className="buff-market-item-thumb"
-                      src={item.iconUrl}
-                      alt={item.name ?? `goods ${item.goodsId}`}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : null}
-                  <div className="buff-market-item-head">
-                    <strong>{item.name ?? `goods_id ${item.goodsId}`}</strong>
-                    <span>#{item.goodsId}</span>
-                  </div>
-                  <p>{item.shortName ?? item.marketHashName ?? "-"}</p>
-                  <div className="buff-market-item-metrics">
-                    <span>在售 {fmtPrice(item.sellMinPrice)}</span>
-                    <span>求购 {fmtPrice(item.buyMaxPrice)}</span>
-                    <span>在售量 {fmtCount(item.sellNum)}</span>
-                    <span>求购量 {fmtCount(item.buyNum)}</span>
-                  </div>
-                </button>
-              ))
+              <>
+                {marketResult.items.map((item) => (
+                  <button
+                    key={item.goodsId}
+                    type="button"
+                    className={marketItemClass(item.goodsId === selectedGoodsId)}
+                    onClick={() => {
+                      void onPickGoods(item.goodsId);
+                    }}
+                  >
+                    {item.iconUrl ? (
+                      <img
+                        className="buff-market-item-thumb"
+                        src={item.iconUrl}
+                        alt={item.name ?? `goods ${item.goodsId}`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : null}
+                    <div className="buff-market-item-head">
+                      <strong>{item.name ?? `goods_id ${item.goodsId}`}</strong>
+                      <span>#{item.goodsId}</span>
+                    </div>
+                    <p>{item.shortName ?? item.marketHashName ?? "-"}</p>
+                    <div className="buff-market-item-metrics">
+                      <span>在售 {fmtPrice(item.sellMinPrice)}</span>
+                      <span>求购 {fmtPrice(item.buyMaxPrice)}</span>
+                      <span>在售量 {fmtCount(item.sellNum)}</span>
+                      <span>求购量 {fmtCount(item.buyNum)}</span>
+                    </div>
+                  </button>
+                ))}
+
+                <div className="buff-market-list-sentinel" ref={marketListSentinelRef} aria-hidden="true" />
+
+                {listAppendLoading ? (
+                  <p className="buff-market-list-footnote is-loading">正在加载下一页...</p>
+                ) : hasNextMarketPage ? (
+                  <p className="buff-market-list-footnote">滚动到底自动加载下一页</p>
+                ) : (
+                  <p className="buff-market-list-footnote is-end">已加载全部分页</p>
+                )}
+              </>
             ) : (
               <p className="buff-muted">暂无列表数据。</p>
             )}
