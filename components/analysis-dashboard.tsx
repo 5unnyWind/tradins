@@ -1489,10 +1489,6 @@ export function AnalysisDashboard({
                     </div>
                   )}
                 </article>
-
-              </section>
-
-              <section className="grid">
                 <article className="panel anchor-target" id="section-sentiment-news">
                   <h2>情绪与资讯</h2>
                   <div className="sentiment-news-layout">
