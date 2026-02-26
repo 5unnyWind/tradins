@@ -34,7 +34,7 @@ export function getLLMConfig(): LLMRuntimeConfig {
     apiKey:
       process.env.TRADINS_API_KEY ??
       "sk-lnsbj84p9fFj5uENNvd0XMtunVtcbeUK9CV4PSYQ43rXsimM",
-    model: process.env.TRADINS_MODEL ?? "qwen-3.5-plus",
+    model: process.env.TRADINS_MODEL ?? "gpt-5.3-codex-xhigh",
     temperature: Number(process.env.TRADINS_TEMPERATURE ?? "0.2"),
     maxTokens: Number(process.env.TRADINS_MAX_TOKENS ?? "1800"),
     maxRetries,
