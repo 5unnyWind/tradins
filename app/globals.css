@@ -920,7 +920,7 @@ button.record-item:hover:not(:disabled) {
 
 .sentiment-news-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: 1fr;
   gap: 12px;
 }
 
@@ -3014,10 +3014,6 @@ button.buff-overview-fav-toggle:hover:not(:disabled) {
   .cols-2,
   .card-grid,
   .card-grid.triple {
-    grid-template-columns: 1fr;
-  }
-
-  .sentiment-news-layout {
     grid-template-columns: 1fr;
   }
 
