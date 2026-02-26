@@ -918,6 +918,26 @@ button.record-item:hover:not(:disabled) {
   padding-top: 6px;
 }
 
+.sentiment-news-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.sentiment-news-block {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-1);
+  padding: 10px;
+  min-width: 0;
+}
+
+.sentiment-news-block > h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
 .sentiment-panel-label {
   margin: 0;
   font-size: 14px;
@@ -2994,6 +3014,10 @@ button.buff-overview-fav-toggle:hover:not(:disabled) {
   .cols-2,
   .card-grid,
   .card-grid.triple {
+    grid-template-columns: 1fr;
+  }
+
+  .sentiment-news-layout {
     grid-template-columns: 1fr;
   }
 

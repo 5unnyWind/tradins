@@ -968,8 +968,7 @@ export function AnalysisDashboard({
     if (!showAnalysisPanels) return targets;
     targets.push(
       { id: "section-market-snapshot", label: "市场快照" },
-      { id: "section-sentiment-gauge", label: "情绪仪表盘" },
-      { id: "section-news-feed", label: "News Feed" },
+      { id: "section-sentiment-news", label: "情绪与资讯" },
       { id: "section-analysts", label: "四位分析师" },
       { id: "section-debates", label: "多空辩论" },
       { id: "section-preliminary-plan", label: "交易计划" },
@@ -1493,47 +1492,52 @@ export function AnalysisDashboard({
 
               </section>
 
-              <section className="grid cols-2">
-                <article className="panel anchor-target" id="section-sentiment-gauge">
-                  <h2>情绪仪表盘</h2>
-                  {sentimentGaugeScore !== null ? (
-                    <div className="sentiment-panel">
-                      <SentimentGauge score={sentimentGaugeScore} />
-                      <p className="sentiment-panel-label">{sentimentGaugeText}</p>
-                      <p className="sentiment-panel-meta">
-                        新闻情绪 {sentimentSubScores.news ?? "--"} · 社媒情绪 {sentimentSubScores.social ?? "--"}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="empty-state">{isAnalyzing ? "情绪信号汇总中..." : "等待情绪数据"}</div>
-                  )}
-                </article>
-
-                <article className="panel anchor-target" id="section-news-feed">
-                  <h2>News Feed</h2>
-                  {latestNewsItems.length ? (
-                    <div className="news-feed-list">
-                      {latestNewsItems.map((item, index) => (
-                        <div className="news-feed-item" key={`${index}-${item.title}`}>
-                          <div className="news-feed-head">
-                            <strong>{item.title}</strong>
-                            <span>{formatNewsTimestamp(item.publishedAt)}</span>
-                          </div>
-                          {item.summary ? <p>{shorten(item.summary, 180)}</p> : null}
-                          <div className="news-feed-foot">
-                            <em>{item.publisher ?? "未知来源"}</em>
-                            {item.link ? (
-                              <a href={item.link} target="_blank" rel="noreferrer">
-                                查看
-                              </a>
-                            ) : null}
-                          </div>
+              <section className="grid">
+                <article className="panel anchor-target" id="section-sentiment-news">
+                  <h2>情绪与资讯</h2>
+                  <div className="sentiment-news-layout">
+                    <div className="sentiment-news-block">
+                      <h3>情绪仪表盘</h3>
+                      {sentimentGaugeScore !== null ? (
+                        <div className="sentiment-panel">
+                          <SentimentGauge score={sentimentGaugeScore} />
+                          <p className="sentiment-panel-label">{sentimentGaugeText}</p>
+                          <p className="sentiment-panel-meta">
+                            新闻情绪 {sentimentSubScores.news ?? "--"} · 社媒情绪 {sentimentSubScores.social ?? "--"}
+                          </p>
                         </div>
-                      ))}
+                      ) : (
+                        <div className="empty-state">{isAnalyzing ? "情绪信号汇总中..." : "等待情绪数据"}</div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="empty-state">{isAnalyzing ? "资讯抓取中..." : "暂无资讯"}</div>
-                  )}
+
+                    <div className="sentiment-news-block">
+                      <h3>News Feed</h3>
+                      {latestNewsItems.length ? (
+                        <div className="news-feed-list">
+                          {latestNewsItems.map((item, index) => (
+                            <div className="news-feed-item" key={`${index}-${item.title}`}>
+                              <div className="news-feed-head">
+                                <strong>{item.title}</strong>
+                                <span>{formatNewsTimestamp(item.publishedAt)}</span>
+                              </div>
+                              {item.summary ? <p>{shorten(item.summary, 180)}</p> : null}
+                              <div className="news-feed-foot">
+                                <em>{item.publisher ?? "未知来源"}</em>
+                                {item.link ? (
+                                  <a href={item.link} target="_blank" rel="noreferrer">
+                                    查看
+                                  </a>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="empty-state">{isAnalyzing ? "资讯抓取中..." : "暂无资讯"}</div>
+                      )}
+                    </div>
+                  </div>
                 </article>
               </section>
 
